@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MINERU·PRESS — 企业文档知识化平台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/vendor/katex/katex.min.css" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="grain"></div>
+
+<!-- 顶部应用栏 -->
+<header class="appbar">
+  <a class="brand" href="#/workspace">
+    <span class="brand-mark">M</span>
+    <span class="brand-text">
+      <span class="brand-name">MINERU<span class="brand-dim">·</span>PRESS</span>
+      <span class="brand-sub">企业文档知识化</span>
+    </span>
+  </a>
+
+  <nav class="nav">
+    <a class="nav-item" href="#/workspace" data-route="workspace">
+      <span class="nav-num">01</span> 工作台
+    </a>
+    <a class="nav-item" href="#/kb" data-route="kb">
+      <span class="nav-num">02</span> 知识库
+    </a>
+  </nav>
+
+  <div class="appbar-right">
+    <span class="cloud-chip" id="cloud-chip" title="云端沙箱状态">
+      <span id="st-daytona" class="dot dot-warn"></span>
+      <span id="cloud-chip-txt">检查中</span>
+    </span>
+    <button id="btn-init" class="btn btn-ghost">⟳ 初始化</button>
+  </div>
+</header>
+
+<main class="main">
+  <!-- ============ 页面 01：工作台 ============ -->
+  <section id="page-workspace" class="page page-workspace">
+    <div class="ws-grid">
+      <!-- 左：标题 + 采集 + 流水线 -->
+      <div class="ws-col ws-left">
+        <div class="page-head page-head-compact">
+          <h1>采集与解析</h1>
+          <p class="page-head-sub">把散落在 PDF / Word / Excel / 图片中的静态信息，可靠地转化为可检索的结构化知识。</p>
+        </div>
+
+        <div id="dropzone" class="dropzone" tabindex="0">
+          <div class="dz-inner">
+            <div class="dz-icon" aria-hidden="true">⤓</div>
+            <div class="dz-title">投放待知识化的材料</div>
+            <div class="dz-hint">拖拽文件或整个 ZIP 压缩包到这里，或点击选择 · 截图后可直接 <b>Ctrl/Cmd+V 粘贴</b></div>
+            <div class="dz-formats">
+              <span>PDF</span><span>DOCX</span><span>XLSX</span><span>PPTX</span><span>图片</span><span class="dz-zip">ZIP 批量</span>
+            </div>
+          </div>
+          <input id="file-input" type="file" multiple hidden />
+        </div>
+
+        <div class="queue-head">
+          <span class="queue-title">处理流水线</span>
+          <span id="queue-count" class="queue-count mono">0 项</span>
+        </div>
+        <div class="pipeline-tools">
+          <div class="pipeline-filters" id="pipeline-filters">
+            <button class="pf active" data-filter="all">全部</button>
+            <button class="pf" data-filter="active">进行中</button>
+            <button class="pf" data-filter="done">已完成</button>
+            <button class="pf" data-filter="error">失败</button>
+            <button class="pf" data-filter="cancelled">已取消</button>
+            <button class="pf" data-filter="trash">回收站</button>
+          </div>
+          <button id="btn-empty-trash" class="btn btn-danger" hidden>清空回收站</button>
+          <button id="btn-select" class="btn btn-ghost">批量选择</button>
+        </div>
+        <div class="batch-bar" id="batch-bar" hidden>
+          <span id="batch-count" class="mono">已选 0 项</span>
+          <button id="batch-all" class="btn">全选</button>
+          <button id="batch-cancel" class="btn">取消</button>
+          <button id="batch-retry" class="btn">重试</button>
+          <button id="batch-delete" class="btn btn-danger">删除</button>
+          <span class="batch-spacer"></span>
+          <button id="batch-exit" class="btn btn-ghost">退出</button>
+        </div>
+        <ul id="job-list" class="job-list"></ul>
+        <div id="job-empty" class="empty-state">
+          <div class="empty-glyph">¶</div>
+          <p>暂无任务</p>
+          <p class="empty-sub">投放文件后，任务将在此排队解析并自动入库</p>
+        </div>
+      </div>
+
+      <!-- 右：详情 -->
+      <div class="ws-col ws-right">
+        <div id="detail-empty" class="empty-state detail-empty">
+          <div class="empty-glyph">⌘</div>
+          <p>选择一个任务查看解析结果</p>
+          <p class="empty-sub">正文（含公式排版）· 产物清单 · 运行日志</p>
+        </div>
+
+        <div id="detail" class="detail" hidden>
+          <div class="detail-head">
+            <div class="dh-title-wrap">
+              <span id="d-name" class="d-name"></span>
+              <span id="d-status" class="pill"></span>
+            </div>
+            <div class="dh-actions">
+              <a id="btn-download-md" class="btn btn-ghost" hidden href="#" title="导出为 PDF（与正文显示一致）">⤓ 导出 PDF</a>
+            </div>
+          </div>
+          <div id="d-meta" class="d-meta"></div>
+          <div class="tabs">
+            <button class="tab active" data-tab="md">正文</button>
+            <button class="tab" data-tab="files">文件 <span id="tab-files-count" class="tab-count"></span></button>
+            <button class="tab" data-tab="log">日志</button>
+          </div>
+          <div id="pane-md" class="pane pane-md active">
+            <div id="md-view" class="md-view"></div>
+            <div id="md-empty" class="empty-state" hidden></div>
+          </div>
+          <div id="pane-files" class="pane pane-files"></div>
+          <div id="pane-log" class="pane pane-log">
+            <pre id="log-view" class="log-view"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 页面 02：知识库 ============ -->
+  <section id="page-kb" class="page page-kb" hidden>
+    <div class="kb-hero">
+      <div class="page-head-title">
+        <h1>知识检索</h1>
+        <p class="page-head-sub">跨全部入库文档的全文检索，命中即定位到原文。</p>
+      </div>
+      <div class="kb-stats-row mono">
+        <span><b id="kb-stat-docs">0</b> 文档</span>
+        <span class="stat-sep">/</span>
+        <span><b id="kb-stat-chunks">0</b> 检索片段</span>
+      </div>
+      <div class="kb-search">
+        <span class="kb-search-ico" aria-hidden="true">⌕</span>
+        <input id="kb-input" type="text" placeholder="检索入库文档内容，如：椭圆 / 销售数据 / Spark …" autocomplete="off" />
+        <div class="kb-mode" title="混合 = 关键词 + 语义融合（推荐）">
+          <button class="km active" data-mode="hybrid">混合</button>
+          <button class="km" data-mode="keyword">关键词</button>
+          <button class="km" data-mode="semantic">语义</button>
+        </div>
+        <button id="kb-clear" class="btn btn-ghost" hidden>清除</button>
+      </div>
+    </div>
+
+    <div class="kb-content">
+      <div id="kb-browse" class="kb-browse"></div>
+      <div id="kb-results" class="kb-results" hidden></div>
+      <div id="kb-empty" class="empty-state" hidden>
+        <div class="empty-glyph">§</div>
+        <p>知识库为空</p>
+        <p class="empty-sub">完成解析的任务会自动入库，随后即可检索</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="statusbar">
+  <span class="st-item">沙箱 <span id="st-sandbox" class="mono">—</span></span>
+  <span class="st-item">工作目录 <span id="st-workdir" class="mono dim">—</span></span>
+  <button id="btn-destroy" class="st-danger" hidden>销毁沙箱</button>
+  <span class="st-spacer"></span>
+  <span class="st-item mono dim">POWERED BY MINERU 3.x × DAYTONA CLOUD</span>
+</footer>
+
+<script src="/vendor/marked/marked.min.js"></script>
+<script src="/vendor/katex/katex.min.js"></script>
+<script src="/app.js"></script>
+
+<!-- 自定义确认弹窗 -->
+<div id="confirm-mask" class="confirm-mask" hidden>
+  <div class="confirm-box" role="dialog" aria-modal="true">
+    <div class="confirm-glyph" id="confirm-glyph">🗑</div>
+    <h3 id="confirm-title" class="confirm-title"></h3>
+    <p id="confirm-msg" class="confirm-msg"></p>
+    <div class="confirm-actions">
+      <button id="confirm-no" class="btn btn-ghost">取消</button>
+      <button id="confirm-yes" class="btn">确认</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>

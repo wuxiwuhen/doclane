@@ -1,0 +1,26 @@
+{
+  "name": "mineru-daytona-extractor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "基于 MinerU + Daytona 沙箱的多格式内容提取工具（PDF / Word / Excel / PPT / 图片 → Markdown）",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build:image": "docker build -t mineru-local:test -f docker/MinerU.Dockerfile ."
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "katex": "^0.18.4",
+    "marked": "^15.0.6",
+    "multer": "^1.4.5-lts.1",
+    "puppeteer-core": "^25.7.0"
+  },
+  "devDependencies": {
+    "vercel": "^59.0.0"
+  }
+}
