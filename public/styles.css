@@ -478,3 +478,8 @@ a { color: inherit; text-decoration: none; }
 .auth-error { color: var(--accent-deep); font-size: 12px; margin: 0; }
 .auth-submit { margin-top: 4px; }
 .auth-hint { font-size: 10.5px; color: var(--ink-faint); line-height: 1.6; }
+
+/* 登录前隐藏应用外壳（保留布局占位，避免跳动） */
+body.auth-gating .appbar,
+body.auth-gating .main,
+body.auth-gating .statusbar { visibility: hidden; }

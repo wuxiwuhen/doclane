@@ -68,6 +68,7 @@
         }
         session = data.session;
         mask.hidden = true;
+        document.body.classList.remove('auth-gating');
         await bootApp();
       } catch (e) {
         showErr(e.message || '登录失败');
@@ -122,11 +123,15 @@
     if (session) {
       await bootApp();
     } else {
+      // 登录前隐藏应用外壳，只留登录弹窗
+      document.body.classList.add('auth-gating');
       authUi();
     }
     supabase.auth.onAuthStateChange((_ev, sess) => {
+      const hadSession = !!session;
       session = sess;
-      if (!sess) { location.reload(); }
+      // 仅"有会话 → 无会话"（登出）时刷新；初始无会话的 INITIAL_SESSION 事件不触发刷新
+      if (hadSession && !sess) { location.reload(); }
     });
   })();
 
