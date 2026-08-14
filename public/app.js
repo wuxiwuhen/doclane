@@ -18,6 +18,7 @@
     trashJobs: new Map(),
     selectMode: false, selectedIds: new Set(), historyOpen: true, // 历史记录默认展开
     initBusy: false, // 初始化进行中（防止状态轮询中途隐藏按钮）
+    initErrShown: false, // 环境初始化错误只提示一次（避免轮询刷屏）
   };
 
   /* ---------- 认证（Supabase Auth）+ 带 token 的请求 ---------- */
@@ -81,7 +82,12 @@
         const uploading = list.filter((j) => j.status === 'uploaded');
         if (uploading.length && !state.initBusy) {
           state.initBusy = true;
-          apiFetch('/api/admin/init', { method: 'POST' }).then((r) => r.json()).catch(() => null)
+          apiFetch('/api/admin/init', { method: 'POST' }).then((r) => r.json()).then((d) => {
+            if (d && d.ok === false && !state.initErrShown) {
+              state.initErrShown = true;
+              flashToast('环境初始化失败：' + (d.error || '未知错误'));
+            }
+          }).catch(() => null)
             .finally(() => { state.initBusy = false; });
         }
         // 自动跟随：批量模式下，右侧详情始终跟随当前解析中的任务（无解析中则跟随队首）
@@ -264,7 +270,14 @@
           selectJob(job.id);
           switchTab('log');
           // 3) 标记已上传并触发 ensure（快照→沙箱→drain.py）
-          apiFetch(`/api/jobs/${job.id}/uploaded`, { method: 'POST' }).catch(() => {});
+          apiFetch(`/api/jobs/${job.id}/uploaded`, { method: 'POST' })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d && d.ok === false) {
+                flashToast('解析启动失败：' + (d.ensure?.error || d.error || '未知错误'));
+              }
+            })
+            .catch((e) => flashToast('解析启动失败：' + (e.message || '网络错误')));
           pollJob(job.id);
         } else {
           state.jobs.delete(tempId); renderJobList();
