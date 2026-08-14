@@ -158,7 +158,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.static(path.join(__dirname, 'web')));
+app.use(express.static(path.join(__dirname, 'public')));
 app.use('/vendor/marked', express.static(path.join(__dirname, 'node_modules', 'marked')));
 app.use('/vendor/katex', express.static(path.join(__dirname, 'node_modules', 'katex', 'dist')));
 
