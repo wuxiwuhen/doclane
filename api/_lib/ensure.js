@@ -5,6 +5,9 @@ import drainSource from './drain_source.js';
 
 const SNAPSHOT_NAME = process.env.SNAPSHOT_NAME || 'mineru-snap-baked';
 const SANDBOX_NAME = process.env.SANDBOX_NAME || 'mineru-extractor-sandbox';
+// 空闲自动停机分钟数：与 docs/architecture.md 的「autoStop 60min 尾保回收」对齐；
+// 停机后磁盘保留，下次任务 ensure 时 startSandbox 唤醒复用（可经 AUTO_STOP_MINUTES 覆盖）
+const AUTO_STOP_MINUTES = Number(process.env.AUTO_STOP_MINUTES || 60);
 
 export function snapshotName() { return SNAPSHOT_NAME; }
 export function sandboxName() { return SANDBOX_NAME; }
@@ -53,7 +56,7 @@ export async function ensureSandbox() {
         await c.createSnapshot({ name: SNAPSHOT_NAME, buildInfo: { dockerfileContent: dockerfile } });
         return { ok: true, building: true, message: '快照构建中（首次约 5-20 分钟），构建完成后自动继续' };
       }
-      await c.createSandbox({ name: SANDBOX_NAME, snapshot: hit.name });
+      await c.createSandbox({ name: SANDBOX_NAME, snapshot: hit.name, autoStopInterval: AUTO_STOP_MINUTES });
       return { ok: true, warming: true, message: '沙箱创建中（约 10-60 秒），稍候自动继续' };
     }
 
