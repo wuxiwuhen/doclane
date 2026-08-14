@@ -59,6 +59,13 @@ def sb_insert(table, rows):
     with urllib.request.urlopen(req, timeout=60) as r:
         return json.loads(r.read())
 
+def sb_delete(table, col, val):
+    """按列等值删除（先删子表再删父表，避免外键/主键冲突）"""
+    req = urllib.request.Request(f"{SUPABASE_URL}/rest/v1/{table}?{col}=eq.{val}",
+                                 headers=sb_headers(), method="DELETE")
+    with urllib.request.urlopen(req, timeout=60) as r:
+        return r.status
+
 def storage_get(path):
     url = f"{SUPABASE_URL}/storage/v1/object/{path}"
     req = urllib.request.Request(url, headers={"Authorization": "Bearer " + SERVICE_KEY, "apikey": SERVICE_KEY})
@@ -69,7 +76,8 @@ def storage_put(path, data, ctype="application/octet-stream"):
     url = f"{SUPABASE_URL}/storage/v1/object/{path}"
     req = urllib.request.Request(url, data=data, method="POST",
                                  headers={"Authorization": "Bearer " + SERVICE_KEY, "apikey": SERVICE_KEY,
-                                          "Content-Type": ctype})
+                                          "Content-Type": ctype,
+                                          "x-upsert": "true"})  # 覆盖已存在产物（任务重试幂等）
     with urllib.request.urlopen(req, timeout=300) as r:
         return r.status
 
@@ -171,9 +179,11 @@ def main():
         if not main_md_path:
             raise RuntimeError("未找到任何 markdown 产物")
 
-        # 4. 入库（文档 + chunk + bigram）
+        # 4. 入库（文档 + chunk + bigram）——先清旧记录再写入（重试复用同一 job id，幂等）
         main_md = storage_get(f"outputs/{JOB_ID}/{main_md_path}").decode("utf-8", errors="replace")
         append_log(job, f"入库知识库（{len(chunk_md(main_md))} 个片段）…")
+        sb_delete("chunks", "doc_id", JOB_ID)
+        sb_delete("documents", "id", JOB_ID)
         sb_insert("documents", [{
             "id": JOB_ID, "job_id": JOB_ID, "filename": job["original_name"], "ext": job.get("ext") or "",
             "size": job.get("size") or 0, "main_md": main_md,
