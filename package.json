@@ -1,5 +1,5 @@
 {
-  "name": "mineru-daytona-extractor",
+  "name": "doclane",
   "version": "0.1.0",
   "private": true,
   "description": "基于 MinerU + Daytona 沙箱的多格式内容提取工具（PDF / Word / Excel / PPT / 图片 → Markdown）",
