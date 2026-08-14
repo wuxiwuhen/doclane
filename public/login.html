@@ -71,8 +71,11 @@
     clearErr();
     submit.disabled = true; submit.textContent = '请稍候…';
     try {
-      const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp;
-      const { data, error } = await fn({ email, password });
+      // 注意：必须作为 supabase.auth 的方法调用（解构后再调会丢失 this）
+      const result = mode === 'login'
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
+      const { data, error } = result;
       if (error) throw error;
       if (mode === 'signup' && data.session == null) {
         showErr('注册成功，请到邮箱确认后登录（若未收到，检查垃圾箱）');
