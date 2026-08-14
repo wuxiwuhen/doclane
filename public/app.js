@@ -1041,7 +1041,7 @@
     });
     if (!ok) return;
     const r = await apiFetch('/api/admin/sandbox', { method: 'DELETE' }).then((x) => x.json()).catch(() => ({ ok: false }));
-    flashToast(r.ok ? '沙箱已销毁' : '销毁失败，请查看服务端日志');
+    flashToast(r.ok ? '沙箱已销毁' : `销毁失败：${r.error || '请查看服务端日志'}`);
     refreshStatus();
   });
 
