@@ -78,7 +78,8 @@ CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 
 def to_bigrams(text):
     """中文连续段按 2 字符滑动窗口切词，非中文保留为词；与前端/旧库一致。"""
-    def repl(zh):
+    def repl(m):
+        zh = m.group(0)  # re.sub 的替换函数收到的是 match 对象
         if len(zh) == 1:
             return zh + " "
         return " ".join(zh[i:i + 2] for i in range(len(zh) - 1)) + " "
