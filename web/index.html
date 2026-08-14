@@ -180,7 +180,26 @@
 
 <script src="/vendor/marked/marked.min.js"></script>
 <script src="/vendor/katex/katex.min.js"></script>
+<script src="/config.js"></script>
+<script src="/vendor/supabase/supabase.min.js"></script>
 <script src="/app.js"></script>
+
+<!-- 登录 / 注册弹窗 -->
+<div id="auth-mask" class="auth-mask" hidden>
+  <div class="auth-box" role="dialog" aria-modal="true">
+    <div class="auth-brand">DOCLANE</div>
+    <p class="auth-sub">企业文档知识化 · 登录后上传解析</p>
+    <div class="auth-tabs">
+      <button id="auth-tab-login" class="auth-tab active">登录</button>
+      <button id="auth-tab-signup" class="auth-tab">注册</button>
+    </div>
+    <input id="auth-email" class="auth-input" type="email" placeholder="邮箱" autocomplete="email" />
+    <input id="auth-password" class="auth-input" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password" />
+    <p id="auth-error" class="auth-error" hidden></p>
+    <button id="auth-submit" class="btn auth-submit">登录</button>
+    <p class="auth-hint">演示环境：任意邮箱注册即可体验；首位管理员通过服务端配置指定</p>
+  </div>
+</div>
 
 <!-- 自定义确认弹窗 -->
 <div id="confirm-mask" class="confirm-mask" hidden>

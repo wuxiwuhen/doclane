@@ -20,8 +20,118 @@
     initBusy: false, // 初始化进行中（防止状态轮询中途隐藏按钮）
   };
 
-  // 流水线排序：解析中 > 排队中 > 其他，同级按创建时间倒序
-  const STATUS_ORDER = { running: 0, queued: 1, done: 2, cancelled: 3, error: 4 };
+  /* ---------- 认证（Supabase Auth）+ 带 token 的请求 ---------- */
+  const CFG = window.DSH_CONFIG || {};
+  const supabase = window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+  let session = null;
+  function authHeaders() {
+    return session && session.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  }
+  function apiFetch(url, opts = {}) {
+    return fetch(url, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
+  }
+
+  /* ---------- 登录弹窗 ---------- */
+  function authUi() {
+    const mask = $('#auth-mask');
+    const err = $('#auth-error');
+    const submit = $('#auth-submit');
+    let mode = 'login';
+    const showErr = (m) => { err.textContent = m; err.hidden = false; };
+    const clearErr = () => { err.hidden = true; };
+
+    $('#auth-tab-login').addEventListener('click', () => {
+      mode = 'login';
+      $('#auth-tab-login').classList.add('active'); $('#auth-tab-signup').classList.remove('active');
+      submit.textContent = '登录'; clearErr();
+    });
+    $('#auth-tab-signup').addEventListener('click', () => {
+      mode = 'signup';
+      $('#auth-tab-signup').classList.add('active'); $('#auth-tab-login').classList.remove('active');
+      submit.textContent = '注册并登录'; clearErr();
+    });
+
+    submit.addEventListener('click', async () => {
+      const email = $('#auth-email').value.trim();
+      const password = $('#auth-password').value;
+      if (!email || !password) return showErr('请输入邮箱和密码');
+      clearErr();
+      submit.disabled = true; submit.textContent = '请稍候…';
+      try {
+        const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp;
+        const { data, error } = await fn({ email, password });
+        if (error) throw error;
+        if (mode === 'signup' && data.session == null) {
+          showErr('注册成功，请到邮箱确认后登录（若未收到，检查垃圾箱）');
+          submit.disabled = false; submit.textContent = '注册并登录';
+          return;
+        }
+        session = data.session;
+        mask.hidden = true;
+        await bootApp();
+      } catch (e) {
+        showErr(e.message || '登录失败');
+        submit.disabled = false; submit.textContent = mode === 'login' ? '登录' : '注册并登录';
+      }
+    });
+
+    mask.hidden = false;
+  }
+
+  function bootApp() {
+    router();
+    refreshStatus();
+    setInterval(refreshStatus, 10000);
+    refreshAllLists().then(() => {
+      const running = [...state.jobs.values()].filter((j) => ['queued', 'uploaded', 'preparing', 'running'].includes(j.status));
+      if (running.length) { selectJob(running[0].id); running.forEach((j) => pollJob(j.id)); }
+    }).catch(() => {});
+    setInterval(() => {
+      const busy = [...state.jobs.values()].some((j) => ['queued', 'uploaded', 'preparing', 'running'].includes(j.status));
+      if (!busy) return;
+      apiFetch('/api/jobs').then((r) => r.json()).then(({ jobs: list }) => {
+        let changed = false;
+        for (const j of list) {
+          if (state.jobs.get(j.id)?.status !== j.status) changed = true;
+          state.jobs.set(j.id, j);
+        }
+        if (changed) { renderJobList(); if (state.selectedId) renderDetail(state.jobs.get(state.selectedId)); }
+        // 待解析中的任务：轮询触发 ensure（幂等；快照构建/沙箱启动由它续拉）
+        const uploading = list.filter((j) => j.status === 'uploaded');
+        if (uploading.length && !state.initBusy) {
+          state.initBusy = true;
+          apiFetch('/api/admin/init', { method: 'POST' }).then((r) => r.json()).catch(() => null)
+            .finally(() => { state.initBusy = false; });
+        }
+        // 自动跟随：批量模式下，右侧详情始终跟随当前解析中的任务（无解析中则跟随队首）
+        if (state.autoFollow) {
+          const sorted = sortJobs(state.jobs.values());
+          const target = sorted.find((j) => j.status === 'running') || sorted.find((j) => j.status === 'queued') || sorted.find((j) => j.status === 'uploaded') || null;
+          if (target) { if (target.id !== state.selectedId) selectJob(target.id); }
+          else { state.autoFollow = false; flashToast('批量任务全部完成'); }
+        }
+      }).catch(() => {});
+    }, 2500);
+  }
+
+  /* ---------- 启动：先认证 ---------- */
+  (async function init() {
+    if (!supabase) { flashToast('缺少 Supabase 配置'); return; }
+    const { data } = await supabase.auth.getSession();
+    session = data.session;
+    if (session) {
+      await bootApp();
+    } else {
+      authUi();
+    }
+    supabase.auth.onAuthStateChange((_ev, sess) => {
+      session = sess;
+      if (!sess) { location.reload(); }
+    });
+  })();
+
+  // 流水线排序：解析中 > 准备/排队 > 其他，同级按创建时间倒序
+  const STATUS_ORDER = { running: 0, preparing: 1, uploaded: 1, queued: 1, done: 2, cancelled: 3, error: 4 };
   function sortJobs(list) {
     return [...list].sort((a, b) => {
       const sa = STATUS_ORDER[a.status] ?? 5, sb = STATUS_ORDER[b.status] ?? 5;
@@ -160,92 +270,64 @@
     const card = buildJobCard({ id: tempId, originalName: file.name, size: file.size, status: 'queued', createdAt: Date.now(), logs: [] });
     card.querySelector('.pill').textContent = '上传中…';
     $('#job-list').prepend(card);
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/jobs');
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        card.querySelector('.job-bar i').style.width = pct + '%';
-        card.querySelector('.pill').textContent = '上传 ' + pct + '%';
-      }
-    };
-    xhr.onload = () => {
-      // 上传结束：移除临时卡片（成功/失败都删，避免残留"上传100%"的假卡片）
+    // 1) 创建任务 → 拿预签名上传 URL
+    apiFetch('/api/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: file.name, size: file.size }),
+    }).then((r) => r.json()).then(({ job, uploadUrl, error }) => {
+      if (!job) throw new Error(error || '创建任务失败');
+      // 2) 浏览器直传 Supabase Storage（绕过 Vercel 体积限制）
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', uploadUrl);
+      xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          card.querySelector('.job-bar i').style.width = pct + '%';
+          card.querySelector('.pill').textContent = '上传 ' + pct + '%';
+        }
+      };
+      xhr.onload = () => {
+        const tmpCard = document.querySelector(`.job[data-id="${tempId}"]`);
+        if (tmpCard) tmpCard.remove();
+        if (xhr.status >= 200 && xhr.status < 300) {
+          state.jobs.delete(tempId);
+          state.jobs.set(job.id, job);
+          renderJobList();
+          state.autoView = job.id;
+          selectJob(job.id);
+          switchTab('log');
+          // 3) 标记已上传并触发 ensure（快照→沙箱→drain.py）
+          apiFetch(`/api/jobs/${job.id}/uploaded`, { method: 'POST' }).catch(() => {});
+          pollJob(job.id);
+        } else {
+          state.jobs.delete(tempId); renderJobList();
+          flashToast('上传失败（' + xhr.status + '）');
+        }
+      };
+      xhr.onerror = () => {
+        const tmpCard = document.querySelector(`.job[data-id="${tempId}"]`);
+        if (tmpCard) tmpCard.remove();
+        state.jobs.delete(tempId); renderJobList();
+        flashToast('网络错误');
+      };
+      xhr.send(file);
+    }).catch((e) => {
       const tmpCard = document.querySelector(`.job[data-id="${tempId}"]`);
       if (tmpCard) tmpCard.remove();
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const { job } = JSON.parse(xhr.responseText);
-        state.jobs.delete(tempId);
-        state.jobs.set(job.id, job);
-        renderJobList();
-        // 上传后默认看日志（运行中），完成后自动切回正文
-        state.autoView = job.id;
-        selectJob(job.id);
-        switchTab(job.status === 'done' ? 'md' : 'log');
-      } else {
-        let msg = '上传失败';
-        try { msg = JSON.parse(xhr.responseText).error || msg; } catch { /* noop */ }
-        state.jobs.delete(tempId); renderJobList();
-        flashToast(msg);
-      }
-    };
-    xhr.onerror = () => { const tmpCard = document.querySelector(`.job[data-id="${tempId}"]`); if (tmpCard) tmpCard.remove(); state.jobs.delete(tempId); renderJobList(); flashToast('网络错误'); };
-    const fd = new FormData();
-    fd.append('file', file);
-    xhr.send(fd);
+      state.jobs.delete(tempId); renderJobList();
+      flashToast(e.message || '创建任务失败');
+    });
   }
 
   function uploadZip(file) {
-    const tempId = 'zip-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-    const card = buildJobCard({ id: tempId, originalName: file.name, size: file.size, status: 'queued', createdAt: Date.now(), logs: [] });
-    card.querySelector('.pill').textContent = '上传中…';
-    $('#job-list').prepend(card);
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/jobs/batch');
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        card.querySelector('.job-bar i').style.width = pct + '%';
-        card.querySelector('.pill').textContent = '上传 ' + pct + '%';
-      }
-    };
-    xhr.onload = () => {
-      const tmpCard = document.querySelector(`.job[data-id="${tempId}"]`);
-      if (tmpCard) tmpCard.remove();
-      state.jobs.delete(tempId);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const { created } = JSON.parse(xhr.responseText);
-        if (created === 0) { flashToast('压缩包内没有支持的文档'); renderJobList(); return; }
-        flashToast(`批量导入完成：${created} 个文件已入队`);
-        fetch('/api/jobs').then((r) => r.json()).then(({ jobs: arr }) => {
-          for (const j of arr) state.jobs.set(j.id, j);
-          renderJobList();
-          // 批量模式：自动跟随当前解析中的任务
-          state.autoFollow = true;
-          const sorted = sortJobs(state.jobs.values());
-          const first = sorted.find((j) => j.status === 'running') || sorted[0];
-          if (first) {
-            state.autoView = first.id;
-            selectJob(first.id);
-            switchTab(first.status === 'done' ? 'md' : 'log');
-          }
-        });
-      } else {
-        let msg = '批量导入失败';
-        try { msg = JSON.parse(xhr.responseText).error || msg; } catch { /* noop */ }
-        renderJobList();
-        flashToast(msg);
-      }
-    };
-    xhr.onerror = () => { const tmpCard = document.querySelector(`.job[data-id="${tempId}"]`); if (tmpCard) tmpCard.remove(); state.jobs.delete(tempId); renderJobList(); flashToast('网络错误'); };
-    const fd = new FormData();
-    fd.append('file', file);
-    xhr.send(fd);
+    flashToast('批量 ZIP 暂不支持，请逐个上传文档');
   }
 
   /* ---------- 任务列表 ---------- */
   function statusText(job) {
-    return job.status === 'queued' ? '排队中' : job.status === 'running' ? '解析中' : job.status === 'done' ? '完成' : job.status === 'error' ? '失败' : job.status === 'cancelled' ? '已取消' : job.status;
+    return job.status === 'queued' ? '排队中' : job.status === 'uploaded' ? '待解析' : job.status === 'preparing' ? '准备中' : job.status === 'running' ? '解析中' : job.status === 'done' ? '完成' : job.status === 'error' ? '失败' : job.status === 'cancelled' ? '已取消' : job.status;
   }
 
   function qualityBadge(job) {
@@ -275,7 +357,7 @@
         b.addEventListener('click', (e) => {
           e.stopPropagation();
           if (b.dataset.act === 'restore') {
-            fetch(`/api/jobs/${job.id}/restore`, { method: 'POST' }).then((r) => r.json()).then((d) => {
+            apiFetch(`/api/jobs/${job.id}/restore`, { method: 'POST' }).then((r) => r.json()).then((d) => {
               if (d.job) { flashToast('已恢复'); refreshAllLists(); }
               else flashToast(d.error || '恢复失败');
             }).catch(() => flashToast('恢复失败'));
@@ -288,7 +370,7 @@
               glyph: '🗑',
             }).then((ok) => {
               if (!ok) return;
-              fetch(`/api/trash/${job.id}`, { method: 'DELETE' }).then((r) => r.json()).then((d) => {
+              apiFetch(`/api/trash/${job.id}`, { method: 'DELETE' }).then((r) => r.json()).then((d) => {
                 if (d.ok) { flashToast('已彻底删除'); refreshAllLists(); }
                 else flashToast(d.error || '删除失败');
               }).catch(() => flashToast('删除失败'));
@@ -322,18 +404,18 @@
             glyph: '🗑',
           }).then((ok) => {
             if (!ok) return;
-            fetch(`/api/jobs/${job.id}`, { method: 'DELETE' }).then((r) => r.json()).then((d) => {
+            apiFetch(`/api/jobs/${job.id}`, { method: 'DELETE' }).then((r) => r.json()).then((d) => {
               if (d.ok) { if (state.selectedId === job.id) { state.selectedId = null; $('#detail').hidden = true; $('#detail-empty').hidden = false; } flashToast('已移入回收站'); refreshAllLists(); }
               else flashToast(d.error || '删除失败');
             }).catch(() => flashToast('删除失败'));
           });
         } else if (act === 'retry') {
-          fetch(`/api/jobs/${job.id}/retry`, { method: 'POST' }).then((r) => r.json()).then((d) => {
+          apiFetch(`/api/jobs/${job.id}/retry`, { method: 'POST' }).then((r) => r.json()).then((d) => {
             if (d.job) { state.jobs.set(job.id, d.job); renderJobList(); pollJob(job.id); flashToast('已重新入队'); }
             else flashToast(d.error || '重试失败');
           }).catch(() => flashToast('重试失败'));
         } else if (act === 'cancel') {
-          fetch(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).then((r) => r.json()).then((d) => {
+          apiFetch(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).then((r) => r.json()).then((d) => {
             if (d.job) { state.jobs.set(job.id, d.job); renderJobList(); flashToast('已取消'); }
             else flashToast(d.error || '取消失败');
           }).catch(() => flashToast('取消失败'));
@@ -447,7 +529,7 @@
       if (state.trashJobs.has(id)) flashToast('回收站中的任务请先「恢复」再查看');
       return;
     }
-    const fresh = await fetch(`/api/jobs/${id}`).then((r) => r.json()).then((d) => d.job).catch(() => null);
+    const fresh = await apiFetch(`/api/jobs/${id}`).then((r) => r.json()).then((d) => d.job).catch(() => null);
     if (fresh) { state.jobs.set(id, fresh); renderJobList(); }
     renderDetail(state.jobs.get(id) || job);
     if (fresh) pollJob(id);
@@ -472,17 +554,15 @@
     $('#d-meta').textContent = meta.join(' · ');
     $('#tab-files-count').textContent = (job.files || []).length ? ` ${job.files.length}` : '';
 
+    // 部署版暂不支持服务端 PDF 导出（改用浏览器打印），隐藏按钮
     const dlBtn = $('#btn-download-md');
-    if (job.status === 'done' && job.mainMd) {
-      dlBtn.hidden = false;
-      dlBtn.href = `/api/jobs/${job.id}/export-pdf`;
-    } else dlBtn.hidden = true;
+    dlBtn.hidden = true;
 
     const mdView = $('#md-view');
     const mdEmpty = $('#md-empty');
     if (job.status === 'done' && job.mainMd) {
       // 拉取"原始提取 + 人工修正"合成后的正文
-      fetch(`/api/jobs/${job.id}/corrected`)
+      apiFetch(`/api/jobs/${job.id}/corrected`)
         .then((r) => r.text())
         .then((text) => {
           marked.use({ renderer: mdRenderer(job.id, job.mainMd) });
@@ -540,7 +620,7 @@
   async function renderLog(job) {
     const view = $('#log-view');
     try {
-      const { logs } = await fetch(`/api/jobs/${job.id}/log?lines=400`).then((r) => r.json());
+      const { logs } = await apiFetch(`/api/jobs/${job.id}/log?lines=400`).then((r) => r.json());
       view.innerHTML = logs.map((l) => {
         const cls = /失败|提取失败/.test(l.msg) ? 'lg-err' : /完成|就绪|入库/.test(l.msg) ? 'lg-ok' : '';
         return `<span class="lg-time">${fmtTime(l.t)}</span>  <span class="${cls}">${esc(l.msg)}</span>`;
@@ -552,7 +632,7 @@
   async function pollJob(id) {
     const job = state.jobs.get(id);
     if (!job || ['done', 'error'].includes(job.status)) { if (state.selectedId === id) renderLog(job); return; }
-    const d = await fetch(`/api/jobs/${id}`).then((r) => r.json()).then((x) => x.job).catch(() => null);
+    const d = await apiFetch(`/api/jobs/${id}`).then((r) => r.json()).then((x) => x.job).catch(() => null);
     if (!d) return;
     state.jobs.set(id, d);
     renderJobList();
@@ -582,7 +662,7 @@
   /* ---------- 知识库 ---------- */
   async function refreshKb() {
     try {
-      const { stats, documents } = await fetch('/api/kb').then((r) => r.json());
+      const { stats, documents } = await apiFetch('/api/kb').then((r) => r.json());
       $('#kb-stat-docs').textContent = stats.documents;
       $('#kb-stat-chunks').textContent = stats.chunks;
       const searching = !!$('#kb-input').value.trim();
@@ -609,7 +689,7 @@
             glyph: '🗑',
           }).then((ok) => {
             if (!ok) return;
-            fetch(`/api/kb/${id}`, { method: 'DELETE' }).then((r) => r.json()).then((d) => {
+            apiFetch(`/api/kb/${id}`, { method: 'DELETE' }).then((r) => r.json()).then((d) => {
               if (d.ok) { refreshKb(); flashToast('已删除'); }
               else flashToast(d.error || '删除失败');
             }).catch(() => flashToast('删除失败'));
@@ -647,7 +727,7 @@
       return;
     }
     const { total, hits, mode, semanticEnabled, degraded, error } =
-      await fetch(`/api/search?q=${encodeURIComponent(q)}&mode=${kbMode}`).then((r) => r.json());
+      await apiFetch(`/api/search?q=${encodeURIComponent(q)}&mode=${kbMode}`).then((r) => r.json());
     $('#kb-browse').hidden = true;
     const res = $('#kb-results');
     res.hidden = false;
@@ -811,7 +891,7 @@
         if (correct === originalText) { msg.textContent = '内容未变化'; return; }
         saveBtn.disabled = true; msg.textContent = '保存中…';
         try {
-          const r = await fetch(`/api/jobs/${job.id}/correction`, {
+          const r = await apiFetch(`/api/jobs/${job.id}/correction`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ original: originalText, correct }),
@@ -833,7 +913,7 @@
 
   // 修正后刷新任务详情（重新渲染正文 + 质量标记）
   async function refreshJobAfterCorrection(id) {
-    const d = await fetch(`/api/jobs/${id}`).then((r) => r.json()).then((x) => x.job).catch(() => null);
+    const d = await apiFetch(`/api/jobs/${id}`).then((r) => r.json()).then((x) => x.job).catch(() => null);
     if (!d) return;
     state.jobs.set(id, d);
     renderJobList();
@@ -880,7 +960,7 @@
   function runBatch(action) {
     const ids = [...state.selectedIds];
     if (!ids.length) { flashToast('请先勾选任务'); return; }
-    const exec = () => fetch('/api/jobs/batch-action', {
+    const exec = () => apiFetch('/api/jobs/batch-action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, ids }),
@@ -909,8 +989,8 @@
   // 统一刷新：流水线 + 回收站
   async function refreshAllLists() {
     const [a, t] = await Promise.all([
-      fetch('/api/jobs').then((r) => r.json()).catch(() => ({ jobs: [] })),
-      fetch('/api/trash').then((r) => r.json()).catch(() => ({ jobs: [] })),
+      apiFetch('/api/jobs').then((r) => r.json()).catch(() => ({ jobs: [] })),
+      apiFetch('/api/trash').then((r) => r.json()).catch(() => ({ jobs: [] })),
     ]);
     state.jobs = new Map((a.jobs || []).map((j) => [j.id, j]));
     state.trashJobs = new Map((t.jobs || []).map((j) => [j.id, j]));
@@ -928,7 +1008,7 @@
       glyph: '🗑',
     }).then((ok) => {
       if (!ok) return;
-      fetch('/api/trash/clear', { method: 'POST' }).then((r) => r.json()).then((d) => {
+      apiFetch('/api/trash/clear', { method: 'POST' }).then((r) => r.json()).then((d) => {
         if (d.ok) { flashToast(`已清空回收站（${d.cleared} 项）`); refreshAllLists(); }
         else flashToast('清空失败');
       }).catch(() => flashToast('清空失败'));
@@ -937,7 +1017,7 @@
 
   async function refreshStatus() {
     try {
-      const h = await fetch('/api/health').then((r) => r.json());
+      const h = await apiFetch('/api/health').then((r) => r.json());
       const ok = h.daytona === 'ok';
       const started = ok && h.sandbox && h.sandbox.state === 'started';
       $('#st-daytona').className = 'dot ' + (ok ? 'dot-ok' : 'dot-err');
@@ -954,7 +1034,7 @@
   $('#btn-init').addEventListener('click', async () => {
     const btn = $('#btn-init');
     // 先校验当前状态：已就绪则无需初始化，避免误导性提示
-    const st = await fetch('/api/admin/status').then((r) => r.json()).catch(() => null);
+    const st = await apiFetch('/api/admin/status').then((r) => r.json()).catch(() => null);
     if (st && st.sandbox?.state === 'started' && st.mineru) {
       flashToast('云端环境已就绪，无需初始化');
       refreshStatus();
@@ -965,9 +1045,9 @@
     btn.disabled = true; btn.textContent = '初始化中…';
     flashToast(firstTime ? '正在准备云端解析环境（首次约 8-20 分钟）' : '正在启动/校验云端环境…');
     try {
-      await fetch('/api/admin/init', { method: 'POST' });
+      await apiFetch('/api/admin/init', { method: 'POST' });
       const iv = setInterval(async () => {
-        const s = await fetch('/api/admin/status').then((r) => r.json()).catch(() => null);
+        const s = await apiFetch('/api/admin/status').then((r) => r.json()).catch(() => null);
         if (!s) return;
         $('#st-sandbox').textContent = s.sandbox?.state || '—';
         $('#st-workdir').textContent = s.workDir || '—';
@@ -995,7 +1075,7 @@
       glyph: '⚠',
     });
     if (!ok) return;
-    const r = await fetch('/api/admin/sandbox', { method: 'DELETE' }).then((x) => x.json()).catch(() => ({ ok: false }));
+    const r = await apiFetch('/api/admin/sandbox', { method: 'DELETE' }).then((x) => x.json()).catch(() => ({ ok: false }));
     flashToast(r.ok ? '沙箱已销毁' : '销毁失败，请查看服务端日志');
     refreshStatus();
   });
@@ -1042,36 +1122,4 @@
       yes.focus();
     });
   }
-
-  /* ---------- 启动 ---------- */
-  (async function boot() {
-    router();
-    refreshStatus();
-    setInterval(refreshStatus, 10000);
-    try {
-      await refreshAllLists();
-      const running = [...state.jobs.values()].filter((j) => ['queued', 'running'].includes(j.status));
-      if (running.length) { selectJob(running[0].id); running.forEach((j) => pollJob(j.id)); }
-    } catch { /* noop */ }
-    setInterval(() => {
-      const busy = [...state.jobs.values()].some((j) => ['queued', 'running'].includes(j.status));
-      if (busy) {
-        fetch('/api/jobs').then((r) => r.json()).then(({ jobs: list }) => {
-          let changed = false;
-          for (const j of list) {
-            if (state.jobs.get(j.id)?.status !== j.status) changed = true;
-            state.jobs.set(j.id, j);
-          }
-          if (changed) { renderJobList(); if (state.selectedId) renderDetail(state.jobs.get(state.selectedId)); }
-          // 自动跟随：批量模式下，右侧详情始终跟随当前解析中的任务（无解析中则跟随队首）
-          if (state.autoFollow) {
-            const sorted = sortJobs(state.jobs.values());
-            const target = sorted.find((j) => j.status === 'running') || sorted.find((j) => j.status === 'queued') || null;
-            if (target) { if (target.id !== state.selectedId) selectJob(target.id); }
-            else { state.autoFollow = false; flashToast('批量任务全部完成'); }
-          }
-        }).catch(() => {});
-      }
-    }, 2500);
-  })();
 })();
