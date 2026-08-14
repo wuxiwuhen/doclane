@@ -20,3 +20,8 @@ supabase/.temp/
 
 # 构建产物
 dist/
+.vercel
+.env*
+
+# 本地部署工具（不进仓库）
+.cli/

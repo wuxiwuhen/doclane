@@ -1,0 +1,15 @@
+# Vercel 部署排除：只发 web/（静态）+ api/（函数）
+node_modules/
+data/
+lib/
+scripts/
+docker/
+tools/
+docs/
+runner/
+sample.docx
+sample.xlsx
+test-sample.pdf
+.xdg/
+.git/
+.cli/
