@@ -1,6 +1,6 @@
 // POST /api/admin/init — 手动 ensure（等价旧「初始化」按钮；幂等，任务排队期前端轮询续拉）
-import { ensureSandbox } from '../_lib/ensure.js';
-import { requireUser, audit } from '../_lib/auth.js';
+import { ensureSandbox } from '../api/_lib/ensure.js';
+import { requireUser, audit } from '../api/_lib/auth.js';
 
 export default async function handler(req, res) {
   const { user, error } = await requireUser(req);

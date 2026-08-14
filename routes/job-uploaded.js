@@ -1,7 +1,7 @@
 // POST /api/jobs/:id/uploaded — 标记已上传并触发 ensure（快照→沙箱→drain.py）
-import { requireUser, audit } from '../../_lib/auth.js';
-import { db } from '../../_lib/supabase.js';
-import { ensure } from '../../_lib/ensure.js';
+import { requireUser, audit } from '../api/_lib/auth.js';
+import { db } from '../api/_lib/supabase.js';
+import { ensure } from '../api/_lib/ensure.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });

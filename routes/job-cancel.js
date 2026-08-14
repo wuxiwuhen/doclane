@@ -1,6 +1,6 @@
 // POST /api/jobs/:id/cancel — 取消排队/已上传任务
-import { requireUser } from '../../_lib/auth.js';
-import { db } from '../../_lib/supabase.js';
+import { requireUser } from '../api/_lib/auth.js';
+import { db } from '../api/_lib/supabase.js';
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);

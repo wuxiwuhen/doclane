@@ -1,8 +1,8 @@
 // /api/jobs — POST 建任务（返回预签名上传 URL，浏览器直传 Storage）+ GET 任务列表
 import { randomUUID } from 'node:crypto';
-import { requireUser, audit } from './_lib/auth.js';
-import { db, storage, configured } from './_lib/supabase.js';
-import { rowToJob, isSupported, extOf } from './_lib/jobs.js';
+import { requireUser, audit } from '../api/_lib/auth.js';
+import { db, storage, configured } from '../api/_lib/supabase.js';
+import { rowToJob, isSupported, extOf } from '../api/_lib/jobs.js';
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);

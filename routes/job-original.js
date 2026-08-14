@@ -1,7 +1,7 @@
 // GET /api/jobs/:id/original — 原始上传文件（302 到 Storage 签名 URL）
 // 同 output/*：原生请求不带 token，UUID 不可猜 + 签名限时，演示期安全边界。
-import { db } from '../../_lib/supabase.js';
-import { signedUrl } from '../../_lib/supabase.js';
+import { db } from '../api/_lib/supabase.js';
+import { signedUrl } from '../api/_lib/supabase.js';
 
 export default async function handler(req, res) {
   const rows = await db.select('jobs', `id=eq.${req.query.id}&select=input_storage_path&limit=1`);

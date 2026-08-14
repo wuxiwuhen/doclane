@@ -1,7 +1,7 @@
 // /api/jobs/:id — GET 详情 / DELETE 软删除（移入回收站）
-import { requireUser, audit } from '../_lib/auth.js';
-import { db } from '../_lib/supabase.js';
-import { rowToJob } from '../_lib/jobs.js';
+import { requireUser, audit } from '../api/_lib/auth.js';
+import { db } from '../api/_lib/supabase.js';
+import { rowToJob } from '../api/_lib/jobs.js';
 
 async function loadOwnedJob(req, user) {
   const rows = await db.select('jobs', `id=eq.${req.query.id}&select=*&limit=1`);

@@ -1,8 +1,8 @@
 // DELETE /api/admin/sandbox — 销毁沙箱（admin；有 running 任务时 409 保护）
-import { DaytonaClient } from '../../lib/daytona.js';
-import { sandboxName } from '../_lib/ensure.js';
-import { requireAdmin, audit } from '../_lib/auth.js';
-import { db } from '../_lib/supabase.js';
+import { DaytonaClient } from '../lib/daytona.js';
+import { sandboxName } from '../api/_lib/ensure.js';
+import { requireAdmin, audit } from '../api/_lib/auth.js';
+import { db } from '../api/_lib/supabase.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'DELETE') return res.status(405).json({ error: 'method' });

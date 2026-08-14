@@ -1,5 +1,5 @@
 // GET /api/health — 云端状态（前端徽章用），与旧 server 形状一致
-import { getStatus } from './_lib/ensure.js';
+import { getStatus } from '../api/_lib/ensure.js';
 
 export default async function handler(_req, res) {
   try {

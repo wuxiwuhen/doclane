@@ -1,7 +1,7 @@
 // /api/trash — GET 回收站列表 / POST clear 清空
-import { requireUser, audit } from './_lib/auth.js';
-import { db } from './_lib/supabase.js';
-import { rowToJob } from './_lib/jobs.js';
+import { requireUser, audit } from '../api/_lib/auth.js';
+import { db } from '../api/_lib/supabase.js';
+import { rowToJob } from '../api/_lib/jobs.js';
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);
