@@ -510,7 +510,7 @@ body.landing { min-height: 100vh; display: flex; flex-direction: column; }
   padding: 22px 40px; border-bottom: 1px solid var(--line);
 }
 .landing-main { flex: 1; display: flex; flex-direction: column; }
-.hero { padding: 96px 40px 64px; text-align: center; }
+.hero { padding: 56px 40px 40px; text-align: center; }
 .hero-kicker { color: var(--accent-deep); letter-spacing: .18em; font-size: 11px; }
 .hero-title {
   font-family: var(--serif); font-size: clamp(40px, 6vw, 64px); line-height: 1.15; font-weight: 600;
@@ -523,7 +523,7 @@ body.landing { min-height: 100vh; display: flex; flex-direction: column; }
 .hero-note { font-size: 10.5px; color: var(--ink-faint); }
 .features {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px;
-  padding: 48px 40px 88px; max-width: 1080px; width: 100%; margin: 0 auto;
+  padding: 32px 40px 44px; max-width: 1080px; width: 100%; margin: 0 auto;
 }
 .feature {
   border: 1px solid var(--line); background: var(--paper-card); padding: 24px 22px;
