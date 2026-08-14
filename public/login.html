@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>登录 · DOCLANE</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="auth-page">
+<div class="grain"></div>
+
+<main class="auth-wrap">
+  <div class="auth-box" role="dialog" aria-modal="true">
+    <a class="auth-brand-link" href="/">
+      <span class="auth-brand">DOCLANE</span>
+    </a>
+    <p class="auth-sub">企业文档知识化 · 登录后进入工作台</p>
+    <div class="auth-tabs">
+      <button id="auth-tab-login" class="auth-tab active">登录</button>
+      <button id="auth-tab-signup" class="auth-tab">注册</button>
+    </div>
+    <input id="auth-email" class="auth-input" type="email" placeholder="邮箱" autocomplete="email" />
+    <input id="auth-password" class="auth-input" type="password" placeholder="密码（至少 6 位）" autocomplete="current-password" />
+    <p id="auth-error" class="auth-error" hidden></p>
+    <button id="auth-submit" class="btn auth-submit">登录</button>
+    <p class="auth-hint">演示环境：任意邮箱注册即可体验；<br/>「立即体验」也可直接上传文档，系统会自动初始化解析环境。</p>
+    <a class="auth-back" href="/">← 返回首页</a>
+  </div>
+</main>
+
+<script src="/config.js"></script>
+<script src="/vendor/supabase/supabase.min.js"></script>
+<script>
+/* login.html — 登录 / 注册（成功后跳转 /app.html） */
+(function () {
+  const CFG = window.DSH_CONFIG || {};
+  const supabase = window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+  const err = document.getElementById('auth-error');
+  const submit = document.getElementById('auth-submit');
+  let mode = 'login';
+  const showErr = (m) => { err.textContent = m; err.hidden = false; };
+  const clearErr = () => { err.hidden = true; };
+
+  (async () => {
+    if (!supabase) { showErr('缺少 Supabase 配置'); return; }
+    // 已登录则直接进工作台
+    const { data } = await supabase.auth.getSession();
+    if (data.session) { location.replace('/app.html'); return; }
+  })();
+
+  document.getElementById('auth-tab-login').addEventListener('click', () => {
+    mode = 'login';
+    document.getElementById('auth-tab-login').classList.add('active');
+    document.getElementById('auth-tab-signup').classList.remove('active');
+    submit.textContent = '登录'; clearErr();
+  });
+  document.getElementById('auth-tab-signup').addEventListener('click', () => {
+    mode = 'signup';
+    document.getElementById('auth-tab-signup').classList.add('active');
+    document.getElementById('auth-tab-login').classList.remove('active');
+    submit.textContent = '注册并登录'; clearErr();
+  });
+
+  submit.addEventListener('click', async () => {
+    const email = document.getElementById('auth-email').value.trim();
+    const password = document.getElementById('auth-password').value;
+    if (!email || !password) return showErr('请输入邮箱和密码');
+    clearErr();
+    submit.disabled = true; submit.textContent = '请稍候…';
+    try {
+      const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp;
+      const { data, error } = await fn({ email, password });
+      if (error) throw error;
+      if (mode === 'signup' && data.session == null) {
+        showErr('注册成功，请到邮箱确认后登录（若未收到，检查垃圾箱）');
+        submit.disabled = false; submit.textContent = '注册并登录';
+        return;
+      }
+      location.replace('/app.html');
+    } catch (e) {
+      showErr(e.message || '登录失败');
+      submit.disabled = false; submit.textContent = mode === 'login' ? '登录' : '注册并登录';
+    }
+  });
+
+  // Enter 键提交
+  document.getElementById('auth-password').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit.click();
+  });
+})();
+</script>
+</body>
+</html>

@@ -31,53 +31,33 @@
     return fetch(url, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
   }
 
-  /* ---------- 登录弹窗 ---------- */
-  function authUi() {
-    const mask = $('#auth-mask');
-    const err = $('#auth-error');
-    const submit = $('#auth-submit');
-    let mode = 'login';
-    const showErr = (m) => { err.textContent = m; err.hidden = false; };
-    const clearErr = () => { err.hidden = true; };
-
-    $('#auth-tab-login').addEventListener('click', () => {
-      mode = 'login';
-      $('#auth-tab-login').classList.add('active'); $('#auth-tab-signup').classList.remove('active');
-      submit.textContent = '登录'; clearErr();
+  /* ---------- 启动：先认证，未登录跳转登录页 ---------- */
+  (async function init() {
+    if (!supabase) { flashToast('缺少 Supabase 配置'); return; }
+    const { data } = await supabase.auth.getSession();
+    session = data.session;
+    if (!session) { location.replace('/login.html'); return; }
+    // 鉴权通过：隐藏启动屏，显示应用
+    document.body.classList.remove('boot-pending');
+    const bs = document.getElementById('boot-screen');
+    if (bs) bs.remove();
+    bootApp();
+    supabase.auth.onAuthStateChange((_ev, sess) => {
+      const hadSession = !!session;
+      session = sess;
+      // 登出（有会话 → 无会话）时回登录页
+      if (hadSession && !sess) { location.replace('/login.html'); }
     });
-    $('#auth-tab-signup').addEventListener('click', () => {
-      mode = 'signup';
-      $('#auth-tab-signup').classList.add('active'); $('#auth-tab-login').classList.remove('active');
-      submit.textContent = '注册并登录'; clearErr();
-    });
+  })();
 
-    submit.addEventListener('click', async () => {
-      const email = $('#auth-email').value.trim();
-      const password = $('#auth-password').value;
-      if (!email || !password) return showErr('请输入邮箱和密码');
-      clearErr();
-      submit.disabled = true; submit.textContent = '请稍候…';
-      try {
-        const fn = mode === 'login' ? supabase.auth.signInWithPassword : supabase.auth.signUp;
-        const { data, error } = await fn({ email, password });
-        if (error) throw error;
-        if (mode === 'signup' && data.session == null) {
-          showErr('注册成功，请到邮箱确认后登录（若未收到，检查垃圾箱）');
-          submit.disabled = false; submit.textContent = '注册并登录';
-          return;
-        }
-        session = data.session;
-        mask.hidden = true;
-        document.body.classList.remove('auth-gating');
-        await bootApp();
-      } catch (e) {
-        showErr(e.message || '登录失败');
-        submit.disabled = false; submit.textContent = mode === 'login' ? '登录' : '注册并登录';
-      }
+  /* ---------- 退出登录 ---------- */
+  document.addEventListener('DOMContentLoaded', () => {
+    const logout = document.getElementById('btn-logout');
+    if (logout) logout.addEventListener('click', async () => {
+      try { await supabase.auth.signOut(); } catch { /* ignore */ }
+      location.replace('/login.html');
     });
-
-    mask.hidden = false;
-  }
+  });
 
   function bootApp() {
     router();
@@ -114,26 +94,6 @@
       }).catch(() => {});
     }, 2500);
   }
-
-  /* ---------- 启动：先认证 ---------- */
-  (async function init() {
-    if (!supabase) { flashToast('缺少 Supabase 配置'); return; }
-    const { data } = await supabase.auth.getSession();
-    session = data.session;
-    if (session) {
-      await bootApp();
-    } else {
-      // 登录前隐藏应用外壳，只留登录弹窗
-      document.body.classList.add('auth-gating');
-      authUi();
-    }
-    supabase.auth.onAuthStateChange((_ev, sess) => {
-      const hadSession = !!session;
-      session = sess;
-      // 仅"有会话 → 无会话"（登出）时刷新；初始无会话的 INITIAL_SESSION 事件不触发刷新
-      if (hadSession && !sess) { location.reload(); }
-    });
-  })();
 
   // 流水线排序：解析中 > 准备/排队 > 其他，同级按创建时间倒序
   const STATUS_ORDER = { running: 0, preparing: 1, uploaded: 1, queued: 1, done: 2, cancelled: 3, error: 4 };
