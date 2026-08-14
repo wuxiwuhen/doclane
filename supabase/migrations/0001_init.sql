@@ -6,14 +6,6 @@
 create extension if not exists vector with schema extensions;
 create extension if not exists pg_trgm with schema extensions;
 
--- ========== 角色辅助函数 ==========
-create or replace function public.is_admin()
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists (
-    select 1 from public.profiles p
-    where p.user_id = auth.uid() and p.role = 'admin'
-  );
-$$;
 
 -- ========== 表 ==========
 create table if not exists public.profiles (
@@ -82,7 +74,7 @@ create table if not exists public.findings (
   job_id           uuid not null references public.jobs(id) on delete cascade,
   rule             text not null,
   snippet          text not null,
-  offset           int not null,
+  char_offset      int not null,
   status           text not null default 'open' check (status in ('open', 'redacted', 'ignored')),
   redacted_snippet text,
   created_at       timestamptz not null default now()
@@ -94,6 +86,15 @@ create table if not exists public.settings (
   value      jsonb,
   updated_at timestamptz not null default now()
 );
+
+-- ========== 角色辅助函数（表之后定义）==========
+create or replace function public.is_admin()
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.user_id = auth.uid() and p.role = 'admin'
+  );
+$$;
 
 -- ========== 触发器：注册用户自动建 profiles ==========
 create or replace function public.handle_new_user()
