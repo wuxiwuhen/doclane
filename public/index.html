@@ -178,13 +178,7 @@
   <span class="st-item mono dim">POWERED BY MINERU 3.x × DAYTONA CLOUD</span>
 </footer>
 
-<script src="/vendor/marked/marked.min.js"></script>
-<script src="/vendor/katex/katex.min.js"></script>
-<script src="/config.js"></script>
-<script src="/vendor/supabase/supabase.min.js"></script>
-<script src="/app.js"></script>
-
-<!-- 登录 / 注册弹窗 -->
+<!-- 登录 / 注册弹窗（必须在 app.js 之前解析，boot 时立即访问） -->
 <div id="auth-mask" class="auth-mask" hidden>
   <div class="auth-box" role="dialog" aria-modal="true">
     <div class="auth-brand">DOCLANE</div>
@@ -200,6 +194,12 @@
     <p class="auth-hint">演示环境：任意邮箱注册即可体验；首位管理员通过服务端配置指定</p>
   </div>
 </div>
+
+<script src="/vendor/marked/marked.min.js"></script>
+<script src="/vendor/katex/katex.min.js"></script>
+<script src="/config.js"></script>
+<script src="/vendor/supabase/supabase.min.js"></script>
+<script src="/app.js"></script>
 
 <!-- 自定义确认弹窗 -->
 <div id="confirm-mask" class="confirm-mask" hidden>
