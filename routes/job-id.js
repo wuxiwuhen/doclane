@@ -26,7 +26,7 @@ export default async function handler(req, res) {
   if (req.method === 'DELETE') {
     const { job, err } = await loadOwnedJob(req, user);
     if (err) return res.status(err[0]).json({ error: err[1] });
-    if (['preparing', 'running'].includes(job.status)) {
+    if (['running'].includes(job.status)) {
       return res.status(409).json({ error: '任务解析中，无法删除（可等待完成或销毁沙箱）' });
     }
     if (job.deleted_at) return res.status(409).json({ error: '任务已在回收站' });

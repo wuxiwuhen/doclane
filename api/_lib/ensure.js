@@ -325,6 +325,15 @@ async function ensureLocal(jobId) {
       return fail(detail);
     }
 
+    // 任务可能已被用户取消/删除（沙箱进程无法终止，但跳过后续入库）
+    try {
+      const cur = await db.select('jobs', `id=eq.${jobId}&select=status,deleted_at`);
+      const cj = cur[0];
+      if (cj && (cj.deleted_at || !['preparing', 'running'].includes(cj.status))) {
+        return { ok: true, started: true, message: '任务已取消/删除，跳过入库' };
+      }
+    } catch { /* 查询失败不阻塞 */ }
+
     // 4) 拉回产物（按 manifest.json）
     await pushLog(`提取完成，拉取产物（${manifest.length} 个）…`);
     const saved = [];

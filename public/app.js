@@ -474,7 +474,7 @@
       return;
     }
     if (state.selectMode) { box.innerHTML = ''; return; }
-    if (job.status === 'queued' || job.status === 'uploaded') {
+    if (job.status === 'queued' || job.status === 'uploaded' || job.status === 'preparing') {
       html += `<button class="ja" data-act="cancel" title="取消排队">✕ 取消</button>`;
       html += `<button class="ja ja-danger" data-act="delete" title="删除任务及文件">🗑 删除</button>`;
     } else if (job.status === 'running') {

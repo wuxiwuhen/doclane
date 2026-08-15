@@ -11,8 +11,8 @@ export default async function handler(req, res) {
   if (job.owner_id !== user.userId && user.role !== 'admin') {
     return res.status(403).json({ error: '无权访问该任务' });
   }
-  if (!['queued', 'uploaded'].includes(job.status)) {
-    return res.status(409).json({ error: '只有排队/待解析中的任务可取消' });
+  if (!['queued', 'uploaded', 'preparing'].includes(job.status)) {
+    return res.status(409).json({ error: '只有排队/待解析/准备中的任务可取消' });
   }
   const logs = [...(job.logs || []), { t: Date.now(), msg: '已取消' }];
   await db.update('jobs', 'id', job.id, { status: 'cancelled', logs, updated_at: new Date().toISOString() });
