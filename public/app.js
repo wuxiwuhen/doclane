@@ -754,9 +754,36 @@
   }
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
-  /* 导出 PDF：点击即下载服务端生成的 PDF（保真渲染，无需打印对话框） */
-  $('#btn-download-md').addEventListener('click', (e) => {
-    // 保留 <a href> 默认下载行为即可（指向 /api/jobs/:id/export-pdf）
+  /* 导出 PDF：fetch（带鉴权头）+ blob 下载（<a href> 导航不带 token 会 401） */
+  $('#btn-download-md').addEventListener('click', async (e) => {
+    e.preventDefault();
+    const href = e.currentTarget.getAttribute('href');
+    if (!href) return;
+    const btn = e.currentTarget;
+    const old = btn.textContent;
+    btn.textContent = '生成中…';
+    try {
+      const r = await apiFetch(href);
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        flashToast('导出失败：' + (j.error || r.status));
+        return;
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'doclane-' + (href.match(/jobs\/([0-9a-f-]{8})/) || [])[1] + '.pdf';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      flashToast('PDF 已导出');
+    } catch (err) {
+      flashToast('导出失败：' + (err.message || '网络错误'));
+    } finally {
+      btn.textContent = old;
+    }
   });
 
   /* ---------- 知识库 ---------- */
