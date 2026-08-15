@@ -102,7 +102,7 @@ export async function ensureSandbox(userId) {
         return { ok: false, error: `快照构建失败（${st}），请删除后重试或检查 Daytona 构建日志` };
       }
       if (!READY.includes(st)) {
-        return { ok: true, building: true, message: '快照构建中（首次约 5-20 分钟），构建完成后自动继续' };
+        return { ok: true, building: true, message: `快照构建中（state=${st}，首次约 5-20 分钟），构建完成后自动继续` };
       }
       // 快照模式：沙箱继承快照规格（Daytona API 不接受此处传 cpu/memory/disk）
       await c.createSandbox({ name, snapshot: hit.name, autoStopInterval: AUTO_STOP_MINUTES, ttlMinutes: SANDBOX_TTL_MIN });
@@ -255,7 +255,7 @@ async function ensureLocal(jobId) {
     const log = (msg) => ({ t: Date.now(), msg: String(msg).slice(0, 300) });
     const oldLogs = Array.isArray(job.logs) ? job.logs : [];
     await db.update('jobs', 'id', jobId, {
-      status: 'preparing', logs: oldLogs.concat(log('任务执行器已启动')),
+      status: 'preparing', logs: oldLogs.concat(log('沙箱已就绪，任务执行器已启动')),
       updated_at: new Date().toISOString(),
     });
 

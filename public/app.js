@@ -80,7 +80,8 @@
       const running = [...state.jobs.values()].filter((j) => ['queued', 'uploaded', 'preparing', 'running'].includes(j.status));
       if (running.length) { selectJob(running[0].id); running.forEach((j) => pollJob(j.id)); }
     }).catch(() => {});
-    setInterval(() => {
+    // 轮询主体抽成函数：定时触发 + 切回页面立即触发（后台 tab 的 setInterval 会被浏览器节流）
+    const pollOnce = () => {
       const busy = [...state.jobs.values()].some((j) => ['queued', 'uploaded', 'preparing', 'running'].includes(j.status));
       if (!busy) return;
       apiFetch('/api/jobs').then((r) => r.json()).then(({ jobs: list }) => {
@@ -112,7 +113,12 @@
           else { state.autoFollow = false; flashToast('批量任务全部完成'); }
         }
       }).catch(() => {});
-    }, 2500);
+    };
+    setInterval(pollOnce, 2500);
+    // 从后台 tab 切回时立即刷新（避免后台节流导致"看起来卡住"）
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) { pollOnce(); refreshStatus(); }
+    });
   }
 
   // 当前用户角色：admin 才显示「初始化/销毁沙箱」入口（任务流转走 /jobs/:id/ensure，与角色无关）
