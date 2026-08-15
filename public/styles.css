@@ -368,6 +368,17 @@ a { color: inherit; text-decoration: none; }
 .confirm-actions .btn-danger:hover { background: var(--accent); color: var(--paper); border-color: var(--accent-deep); box-shadow: 2px 2px 0 var(--ink); }
 .confirm-actions .btn:disabled { opacity: .5; cursor: default; transform: none; box-shadow: none; }
 
+/* 反馈弹窗输入 */
+.fb-input {
+  width: 100%; box-sizing: border-box;
+  font-family: var(--mono); font-size: 12.5px; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--line-strong);
+  padding: 10px 12px; margin-bottom: 10px; resize: vertical;
+}
+.fb-input:focus { outline: none; border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
+.fb-select { width: auto; font-size: 11px; padding: 7px 10px; }
+#fb-err { margin-top: 8px; }
+
 /* ---------- 质量校验徽标 ---------- */
 .q-badge {
   font-family: var(--mono); font-size: 9px; letter-spacing: .05em;

@@ -43,6 +43,8 @@
       <span id="st-daytona" class="dot dot-warn"></span>
       <span id="cloud-chip-txt">检查中</span>
     </span>
+    <button id="btn-feedback" class="btn btn-ghost" title="反馈建议">反馈</button>
+    <button id="btn-admin" class="btn btn-ghost" hidden>管理</button>
     <button id="btn-init" class="btn btn-ghost">⟳ 初始化</button>
     <button id="btn-logout" class="btn btn-ghost" title="退出登录">退出</button>
   </div>
@@ -201,6 +203,27 @@
     <div class="confirm-actions">
       <button id="confirm-no" class="btn btn-ghost">取消</button>
       <button id="confirm-yes" class="btn">确认</button>
+    </div>
+  </div>
+</div>
+
+<!-- 反馈弹窗 -->
+<div id="feedback-mask" class="confirm-mask" hidden>
+  <div class="confirm-box" role="dialog" aria-modal="true">
+    <div class="confirm-glyph">💬</div>
+    <h3 class="confirm-title">反馈建议</h3>
+    <div class="confirm-msg">
+      <textarea id="fb-content" class="fb-input" rows="4" maxlength="2000" placeholder="遇到的问题、改进建议…（2-2000 字）"></textarea>
+      <select id="fb-category" class="fb-input fb-select">
+        <option value="general">一般反馈</option>
+        <option value="bug">Bug 报告</option>
+        <option value="suggestion">功能建议</option>
+      </select>
+      <p id="fb-err" class="auth-error" hidden></p>
+    </div>
+    <div class="confirm-actions">
+      <button id="fb-cancel" class="btn btn-ghost">取消</button>
+      <button id="fb-submit" class="btn">提交</button>
     </div>
   </div>
 </div>

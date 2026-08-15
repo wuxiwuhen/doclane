@@ -7,6 +7,9 @@ import adminStatus from '../routes/admin-status.js';
 import adminInit from '../routes/admin-init.js';
 import adminSandbox from '../routes/admin-sandbox.js';
 import adminAudit from '../routes/admin-audit.js';
+import adminUsers from '../routes/admin-users.js';
+import adminFeedback from '../routes/admin-feedback.js';
+import feedback from '../routes/feedback.js';
 import jobs from '../routes/jobs.js';
 import jobsBatch from '../routes/jobs-batch.js';
 import jobId from '../routes/job-id.js';
@@ -37,6 +40,8 @@ const ROUTES = [
   ['admin/init', adminInit],
   ['admin/sandbox', adminSandbox],
   ['admin/audit', adminAudit],
+  ['admin/users', adminUsers],
+  ['admin/feedback', adminFeedback],
   ['jobs', jobs],
   ['jobs/batch-action', jobsBatch],
   ['jobs/:id/uploaded', jobUploaded],
@@ -44,6 +49,7 @@ const ROUTES = [
   ['jobs/:id/retry', jobRetry],
   ['jobs/:id/ensure', jobEnsure],
   ['sandbox/release', sandboxRelease],
+  ['feedback', feedback],
   ['jobs/:id/restore', jobRestore],
   ['jobs/:id/correction', jobCorrection],
   ['jobs/:id/corrected', jobCorrected],

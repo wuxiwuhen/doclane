@@ -121,8 +121,48 @@
       el.textContent = state.userRole === 'admin' ? 'ADMIN' : 'USER';
       el.style.color = state.userRole === 'admin' ? 'var(--accent-deep)' : '';
     }
+    // 管理后台入口仅 admin 可见
+    const btnAdmin = document.getElementById('btn-admin');
+    if (btnAdmin) btnAdmin.hidden = state.userRole !== 'admin';
     refreshStatus(); // 按角色刷新按钮可见性
   }
+
+  /* ---------- 反馈弹窗 ---------- */
+  function openFeedback() {
+    const mask = document.getElementById('feedback-mask');
+    const content = document.getElementById('fb-content');
+    const err = document.getElementById('fb-err');
+    content.value = '';
+    err.hidden = true;
+    mask.hidden = false;
+    const close = () => { mask.hidden = true; };
+    document.getElementById('fb-cancel').onclick = close;
+    document.getElementById('fb-submit').onclick = async () => {
+      const text = content.value.trim();
+      if (text.length < 2) { err.textContent = '反馈内容至少 2 个字'; err.hidden = false; return; }
+      const btn = document.getElementById('fb-submit');
+      btn.disabled = true;
+      try {
+        const r = await apiFetch('/api/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: text, category: document.getElementById('fb-category').value }),
+        }).then((x) => x.json());
+        if (r.ok) { close(); flashToast('反馈已提交，感谢你的建议'); }
+        else { err.textContent = r.error || '提交失败'; err.hidden = false; }
+      } catch {
+        err.textContent = '网络错误，请重试'; err.hidden = false;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    const fb = document.getElementById('btn-feedback');
+    if (fb) fb.addEventListener('click', openFeedback);
+    const adm = document.getElementById('btn-admin');
+    if (adm) adm.addEventListener('click', () => { location.href = '/admin.html'; });
+  });
 
   // 流水线排序：解析中 > 准备/排队 > 其他，同级按创建时间倒序
   const STATUS_ORDER = { running: 0, preparing: 1, uploaded: 1, queued: 1, done: 2, cancelled: 3, error: 4 };
