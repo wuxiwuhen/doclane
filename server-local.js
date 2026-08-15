@@ -1,6 +1,7 @@
 // server-local.js — 纯本地模式入口：Express + 复用同一套 api 路由 + 静态前端
 // 数据在本地（SQLite + data/ 目录），算力走 Daytona（只需 DAYTONA_API_Key）
 // 用法：DATA_BACKEND=local node server-local.js   （.env 配 DAYTONA_API_Key 等）
+// 注意：默认端口 3088（3080 常被其他工具占用，可用 PORT 覆盖）
 import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
@@ -9,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 import entryHandler from './api/entry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PORT = Number(process.env.PORT || 3080);
+const PORT = Number(process.env.PORT || 3088);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 
 const app = express();

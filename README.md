@@ -152,7 +152,8 @@ DAYTONA_API_Key=dtn_xxxxxxxx
 DATA_BACKEND=local          # 切换到本地数据后端
 # 可选：LOCAL_USER_EMAIL / LOCAL_USER_NAME（本地单用户身份）
 
-DATA_BACKEND=local node server-local.js   # http://127.0.0.1:3080
+DATA_BACKEND=local node server-local.js   # http://127.0.0.1:3088
+# 端口冲突时用 PORT 覆盖：PORT=8099 DATA_BACKEND=local node server-local.js
 ```
 
 - 免登录（单用户即管理员），上传→解析→检索全链路在本地；数据存 `data/`
