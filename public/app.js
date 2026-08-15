@@ -22,6 +22,7 @@
     userRole: 'user', // 当前用户角色（admin 才显示初始化/销毁入口）
     maxUploadMb: 10, // 单文件大小上限（health 接口动态更新）
   };
+  let kbTimer = null; // 知识库轮询定时器（声明提前，避免 init 同步启动时 TDZ）
 
   /* ---------- 认证（Supabase Auth）+ 带 token 的请求 ---------- */
   const CFG = window.DSH_CONFIG || {};
@@ -41,7 +42,8 @@
       document.body.classList.remove('boot-pending');
       const bs = document.getElementById('boot-screen');
       if (bs) bs.remove();
-      bootApp();
+      // 等同步脚本执行完（各类 let 声明就绪）再启动，避免 TDZ
+      setTimeout(bootApp, 0);
       return;
     }
     if (!supabase) { flashToast('缺少 Supabase 配置'); return; }
@@ -274,7 +276,6 @@
   }
 
   /* ---------- 路由 ---------- */
-  let kbTimer = null;
   function router() {
     const route = location.hash.replace(/^#\/?/, '');
     const r = route === 'kb' ? 'kb' : 'workspace';
