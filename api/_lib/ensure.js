@@ -218,8 +218,21 @@ async function ensureLocal(jobId) {
   }
   if (!job) return { ok: false, error: '任务不存在' };
 
+  const log = (msg) => ({ t: Date.now(), msg: String(msg).slice(0, 300) });
+  const logs = Array.isArray(job.logs) ? job.logs.map((l) => ({ ...l })) : [];
+  // 追加日志并立即落库（失败也能看到过程日志）
+  const pushLog = async (msg) => {
+    logs.push(log(msg));
+    try {
+      await db.update('jobs', 'id', jobId, {
+        logs, updated_at: new Date().toISOString(),
+      });
+    } catch { /* 忽略 */ }
+  };
+
   const fail = async (msg) => {
     try {
+      await pushLog('失败：' + String(msg).slice(0, 300));
       await db.update('jobs', 'id', jobId, {
         status: 'error', error: String(msg).slice(0, 500), updated_at: new Date().toISOString(),
       });
@@ -232,15 +245,9 @@ async function ensureLocal(jobId) {
     if (!s.ok) return s;
     if (s.building || s.warming) {
       // 写进度日志（去重），让用户看到沙箱在准备而不是"无响应"
-      try {
-        const old = Array.isArray(job.logs) ? job.logs : [];
-        if (old[old.length - 1]?.msg !== s.message) {
-          await db.update('jobs', 'id', jobId, {
-            logs: old.concat({ t: Date.now(), msg: s.message }),
-            updated_at: new Date().toISOString(),
-          });
-        }
-      } catch { /* 忽略 */ }
+      if (logs[logs.length - 1]?.msg !== s.message) {
+        await pushLog(s.message);
+      }
       return s;
     }
 
@@ -252,12 +259,8 @@ async function ensureLocal(jobId) {
       }
     } catch { /* 忽略 */ }
 
-    const log = (msg) => ({ t: Date.now(), msg: String(msg).slice(0, 300) });
-    const oldLogs = Array.isArray(job.logs) ? job.logs : [];
-    await db.update('jobs', 'id', jobId, {
-      status: 'preparing', logs: oldLogs.concat(log('沙箱已就绪，任务执行器已启动')),
-      updated_at: new Date().toISOString(),
-    });
+    await db.update('jobs', 'id', jobId, { status: 'preparing', updated_at: new Date().toISOString() });
+    await pushLog('沙箱已就绪，任务执行器已启动');
 
     const c = new DaytonaClient();
     const sb = await c.getSandbox(sandboxNameFor(job.owner_id));
@@ -266,6 +269,7 @@ async function ensureLocal(jobId) {
     // 1) 注入 drain.py + 上传输入文件
     //    用 /tmp 下按任务隔离的目录（沙箱内用户非 root，/root 无写权限）
     const W = '/tmp/doclane-' + jobId;
+    await pushLog('正在上传输入文件到云沙箱…');
     await tb.uploadFile(W + '/drain.py', Buffer.from(drainSource), 'drain.py');
     const inputBuf = await storage.read('inputs', job.input_storage_path);
     const inputPath = W + '/input' + (job.ext || '.bin');
@@ -280,6 +284,7 @@ async function ensureLocal(jobId) {
     if (!/STARTED/.test(st.result || '')) {
       return fail('无法启动任务执行器：' + (st.result || '').slice(0, 200));
     }
+    await pushLog('已启动 MinerU 提取（后台运行中）…');
 
     // 3) 轮询产物（manifest.json 出现 = 完成；run.log 出现 ERROR = 失败；总超时兜底）
     //    注意：python:3.11-slim 沙箱无 pgrep/ps，进程探测不可用，改为日志/产物探测
@@ -295,8 +300,9 @@ async function ensureLocal(jobId) {
         manifest = JSON.parse(await tb.downloadFile(W + '/out/manifest.json').then((b) => b.toString('utf8')));
         break;
       } catch { /* 还没完成 */ }
-      // 每 3 轮拉一次 run.log 检测 ERROR（drain.py 失败会 print "ERROR:" 到 stderr）
+      // 每 3 轮（30s）写一次进度 + 检测 run.log 的 ERROR（drain.py 失败会 print "ERROR:" 到 stderr）
       if (pollCount % 3 === 0) {
+        await pushLog(`MinerU 提取中…（已等待 ${Math.round(pollCount * 10)}s）`);
         try {
           const logTxt = await tb.downloadFile(W + '/run.log').then((b) => b.toString('utf8'));
           const m = logTxt.match(/ERROR:[\s\S]*/);
@@ -310,6 +316,7 @@ async function ensureLocal(jobId) {
     }
 
     // 4) 拉回产物（按 manifest.json）
+    await pushLog(`提取完成，拉取产物（${manifest.length} 个）…`);
     const saved = [];
     let mainMd = null;
     for (const m of manifest) {
@@ -322,10 +329,13 @@ async function ensureLocal(jobId) {
       if (isMd && !mainMd) mainMd = m.rel;
     }
 
-    // 4) 入库（documents + chunks，幂等先清旧）
+    // 5) 入库（documents + chunks，幂等先清旧）
+    let paraCount = 0;
     if (mainMd) {
       const md = fs.readFileSync(localOutputPath(jobId, mainMd), 'utf8');
       const paras = String(md || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+      paraCount = paras.length;
+      await pushLog(`入库知识库（${paras.length} 个检索片段）…`);
       await db.remove('chunks', 'doc_id', jobId);
       await db.remove('documents', 'id', jobId);
       await db.insert('documents', [{
@@ -337,10 +347,10 @@ async function ensureLocal(jobId) {
       }
     }
 
+    await pushLog(`完成：${saved.length} 个产物，${paraCount} 个检索片段`);
     await db.update('jobs', 'id', jobId, {
       status: 'done', files: saved, main_md_path: mainMd, error: null,
-      quality: { level: 'ok' },
-      logs: oldLogs.concat(log('沙箱已就绪，任务执行器已启动'), log(`完成：${saved.length} 个产物`)),
+      quality: { level: 'ok' }, logs,
       updated_at: new Date().toISOString(),
     });
     return { ok: true, started: true };
