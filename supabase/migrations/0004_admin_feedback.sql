@@ -1,7 +1,8 @@
 -- 0004_admin_feedback.sql — 用户反馈 + 管理后台用户视图
 -- 应用方式：Supabase Dashboard → SQL Editor 执行（或 supabase db push）
--- 说明：user_profiles 视图仅 service role（管理接口）可查；普通用户因无权访问
---       auth.users 且 RLS 限制，无法枚举他人邮箱。
+-- 说明：user_profiles 为 security_invoker 视图，仅 service role（管理接口）可查；
+--       普通用户因无权访问 auth.users 且底层 RLS 限制，无法枚举他人邮箱。
+--       注意：视图本身不可（也无需）enable RLS——其访问控制由底层表权限决定。
 
 -- ========== 反馈表 ==========
 create table if not exists public.feedback (
@@ -32,6 +33,5 @@ with (security_invoker = on) as
   from public.profiles p
   join auth.users u on u.id = p.user_id;
 
-alter table public.user_profiles enable row level security;
-create policy "user_profiles own or admin" on public.user_profiles
-  for select using (public.is_admin() or auth.uid() = user_id);
+-- service role 读取视图需要 auth.users 的 SELECT 权限（security_invoker 视图按调用者权限）
+grant select on auth.users to service_role;
