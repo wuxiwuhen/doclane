@@ -134,6 +134,14 @@
     const err = document.getElementById('fb-err');
     content.value = '';
     err.hidden = true;
+    let category = 'general';
+    document.querySelectorAll('#fb-cats .fb-cat').forEach((b) => {
+      b.classList.toggle('active', b.dataset.cat === 'general');
+      b.onclick = () => {
+        category = b.dataset.cat;
+        document.querySelectorAll('#fb-cats .fb-cat').forEach((x) => x.classList.toggle('active', x === b));
+      };
+    });
     mask.hidden = false;
     const close = () => { mask.hidden = true; };
     document.getElementById('fb-cancel').onclick = close;
@@ -146,7 +154,7 @@
         const r = await apiFetch('/api/feedback', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: text, category: document.getElementById('fb-category').value }),
+          body: JSON.stringify({ content: text, category }),
         }).then((x) => x.json());
         if (r.ok) { close(); flashToast('反馈已提交，感谢你的建议'); }
         else { err.textContent = r.error || '提交失败'; err.hidden = false; }

@@ -373,10 +373,19 @@ a { color: inherit; text-decoration: none; }
   width: 100%; box-sizing: border-box;
   font-family: var(--mono); font-size: 12.5px; color: var(--ink);
   background: var(--paper); border: 1px solid var(--line-strong);
-  padding: 10px 12px; margin-bottom: 10px; resize: vertical;
+  padding: 10px 12px; resize: vertical;
 }
 .fb-input:focus { outline: none; border-color: var(--ink); box-shadow: 2px 2px 0 var(--ink); }
-.fb-select { width: auto; font-size: 11px; padding: 7px 10px; }
+/* 反馈类型：内联分段按钮（贴合整体 editorial/mono 风格） */
+.fb-cats { display: inline-flex; gap: 6px; margin-bottom: 12px; }
+.fb-cat {
+  font-family: var(--mono); font-size: 10px; letter-spacing: .06em;
+  padding: 5px 12px; cursor: pointer;
+  border: 1px solid var(--line-strong); background: transparent; color: var(--ink-soft);
+  transition: all .15s ease;
+}
+.fb-cat:hover { border-color: var(--ink); color: var(--ink); }
+.fb-cat.active { background: var(--ink); color: var(--paper); border-color: var(--ink); box-shadow: 2px 2px 0 var(--accent); }
 #fb-err { margin-top: 8px; }
 
 /* ---------- 质量校验徽标 ---------- */

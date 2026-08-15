@@ -213,12 +213,12 @@
     <div class="confirm-glyph">💬</div>
     <h3 class="confirm-title">反馈建议</h3>
     <div class="confirm-msg">
+      <div class="fb-cats" id="fb-cats" role="radiogroup" aria-label="反馈类型">
+        <button type="button" class="fb-cat active" data-cat="general">一般</button>
+        <button type="button" class="fb-cat" data-cat="bug">Bug</button>
+        <button type="button" class="fb-cat" data-cat="suggestion">建议</button>
+      </div>
       <textarea id="fb-content" class="fb-input" rows="4" maxlength="2000" placeholder="遇到的问题、改进建议…（2-2000 字）"></textarea>
-      <select id="fb-category" class="fb-input fb-select">
-        <option value="general">一般反馈</option>
-        <option value="bug">Bug 报告</option>
-        <option value="suggestion">功能建议</option>
-      </select>
       <p id="fb-err" class="auth-error" hidden></p>
     </div>
     <div class="confirm-actions">

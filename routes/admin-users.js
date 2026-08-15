@@ -9,10 +9,11 @@ export default async function handler(req, res) {
   const { code, message } = await requireAdmin(req);
   if (code) return res.status(code).json({ error: message });
 
-  const users = await db.select('user_profiles',
-    'select=user_id,email,role,display_name,created_at&order=created_at.desc&limit=500');
-  const jobs = await db.select('jobs', 'select=owner_id,status,created_at&limit=10000');
-  const feedback = await db.select('feedback', 'select=user_id&limit=10000');
+  try {
+    const users = await db.select('user_profiles',
+      'select=user_id,email,role,display_name,created_at&order=created_at.desc&limit=500');
+    const jobs = await db.select('jobs', 'select=owner_id,status,created_at&limit=10000');
+    const feedback = await db.select('feedback', 'select=user_id&limit=10000');
 
   // 任务统计（按 owner 聚合）
   const byUser = new Map();
@@ -46,4 +47,7 @@ export default async function handler(req, res) {
       feedback: feedback.length,
     },
   });
+  } catch (e) {
+    res.status(500).json({ error: '管理数据加载失败：' + (e.message || '').slice(0, 120) });
+  }
 }

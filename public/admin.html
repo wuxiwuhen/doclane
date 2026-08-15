@@ -92,6 +92,10 @@
     <p>需要管理员权限才能查看管理后台。</p>
     <p class="empty-sub">请使用管理员账号登录。</p>
   </div>
+  <div id="admin-error" class="empty-state" hidden>
+    <p>管理后台加载失败。</p>
+    <p class="empty-sub" id="admin-error-msg"></p>
+  </div>
 </main>
 
 <script src="/config.js"></script>
@@ -114,11 +118,21 @@
   const CAT = { general: '一般', bug: 'Bug', suggestion: '建议' };
 
   async function loadAdmin() {
-    const [u, f] = await Promise.all([
-      apiFetch('/api/admin/users').then((r) => r.json()).catch(() => null),
-      apiFetch('/api/admin/feedback').then((r) => r.json()).catch(() => null),
-    ]);
-    if (!u) { document.getElementById('admin-denied').hidden = false; return; }
+    let u = null, f = null;
+    try {
+      const ru = await apiFetch('/api/admin/users');
+      if (ru.status === 403) { document.getElementById('admin-denied').hidden = false; return; }
+      if (ru.status !== 200) throw new Error('users ' + ru.status);
+      u = await ru.json();
+      const rf = await apiFetch('/api/admin/feedback');
+      f = rf.status === 200 ? await rf.json() : null;
+    } catch (e) {
+      // 非权限问题（如数据库迁移未执行）
+      document.getElementById('admin-error').hidden = false;
+      document.getElementById('admin-error-msg').textContent =
+        '请确认已执行数据库迁移（feedback 表 / user_profiles 视图），或稍后重试。';
+      return;
+    }
     document.getElementById('admin-body').hidden = false;
 
     const s = u.summary || {};
