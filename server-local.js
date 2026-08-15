@@ -1,13 +1,16 @@
 // server-local.js — 纯本地模式入口：Express + 复用同一套 api 路由 + 静态前端
 // 数据在本地（SQLite + data/ 目录），算力走 Daytona（只需 DAYTONA_API_Key）
-// 用法：DATA_BACKEND=local node server-local.js   （.env 配 DAYTONA_API_Key 等）
-// 注意：默认端口 3088（3080 常被其他工具占用，可用 PORT 覆盖）
+// 用法：node server-local.js   （.env 配 DAYTONA_API_Key；本入口强制本地模式）
+// 访问：http://127.0.0.1:3088 （端口冲突用 PORT=xxxx 覆盖）
 import 'dotenv/config';
 import express from 'express';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import entryHandler from './api/entry.js';
+
+// 强制本地数据后端（必须在加载 store 门面前设置，故 entry.js 用动态 import）
+process.env.DATA_BACKEND = 'local';
+const entryHandler = (await import('./api/entry.js')).default;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3088);
@@ -67,5 +70,5 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 app.listen(PORT, () => {
   console.log(`DOCLANE local mode → http://127.0.0.1:${PORT}`);
-  console.log(`  数据目录: ${DATA_DIR}   |  算力: Daytona 云沙箱`);
+  console.log(`  数据目录: ${DATA_DIR}   |  算力: Daytona 云沙箱（.env 配 DAYTONA_API_Key）`);
 });
