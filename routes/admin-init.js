@@ -1,12 +1,12 @@
-// POST /api/admin/init — 手动 ensure（等价旧「初始化」按钮；幂等，任务排队期前端轮询续拉）
-// 沙箱就绪后会把所有卡在 uploaded 的任务拉起（ensure 幂等：preparing/running 跳过）
+// POST /api/admin/init — 手动 ensure（仅管理员；沙箱就绪后拉起所有 uploaded 任务）
+// 注意：任务自动流转不再依赖此接口——前端轮询改为调 POST /api/jobs/:id/ensure
 import { ensureSandbox, ensure } from '../api/_lib/ensure.js';
-import { requireUser, audit } from '../api/_lib/auth.js';
+import { requireAdmin, audit } from '../api/_lib/auth.js';
 import { db } from '../api/_lib/supabase.js';
 
 export default async function handler(req, res) {
-  const { user, error } = await requireUser(req);
-  if (error) return res.status(401).json({ error: '未登录' });
+  const { user, code, message } = await requireAdmin(req);
+  if (code) return res.status(code).json({ error: message });
   const r = await ensureSandbox();
   audit(user, 'init', 'sandbox', null, r);
   if (!r.ok) return res.status(500).json(r);

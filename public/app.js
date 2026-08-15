@@ -19,6 +19,7 @@
     selectMode: false, selectedIds: new Set(), historyOpen: true, // 历史记录默认展开
     initBusy: false, // 初始化进行中（防止状态轮询中途隐藏按钮）
     initErrShown: false, // 环境初始化错误只提示一次（避免轮询刷屏）
+    userRole: 'user', // 当前用户角色（admin 才显示初始化/销毁入口）
   };
 
   /* ---------- 认证（Supabase Auth）+ 带 token 的请求 ---------- */
@@ -64,6 +65,7 @@
     router();
     refreshStatus();
     setInterval(refreshStatus, 10000);
+    loadUserRole();
     refreshAllLists().then(() => {
       const running = [...state.jobs.values()].filter((j) => ['queued', 'uploaded', 'preparing', 'running'].includes(j.status));
       if (running.length) { selectJob(running[0].id); running.forEach((j) => pollJob(j.id)); }
@@ -78,17 +80,19 @@
           state.jobs.set(j.id, j);
         }
         if (changed) { renderJobList(); if (state.selectedId) renderDetail(state.jobs.get(state.selectedId)); }
-        // 待解析中的任务：轮询触发 ensure（幂等；快照构建/沙箱启动由它续拉）
+        // 待解析中的任务：轮询触发任务级 ensure（幂等续拉；沙箱就绪自动启动 drain.py）
         const uploading = list.filter((j) => j.status === 'uploaded');
         if (uploading.length && !state.initBusy) {
           state.initBusy = true;
-          apiFetch('/api/admin/init', { method: 'POST' }).then((r) => r.json()).then((d) => {
-            if (d && d.ok === false && !state.initErrShown) {
+          Promise.all(uploading.map((j) =>
+            apiFetch(`/api/jobs/${j.id}/ensure`, { method: 'POST' }).then((r) => r.json()).catch(() => null)
+          )).then((rs) => {
+            const bad = rs.find((d) => d && d.ok === false);
+            if (bad && !state.initErrShown) {
               state.initErrShown = true;
-              flashToast('环境初始化失败：' + (d.error || '未知错误'));
+              flashToast('解析启动失败：' + ((bad.ensure && bad.ensure.error) || bad.error || '未知错误'));
             }
-          }).catch(() => null)
-            .finally(() => { state.initBusy = false; });
+          }).finally(() => { state.initBusy = false; });
         }
         // 自动跟随：批量模式下，右侧详情始终跟随当前解析中的任务（无解析中则跟随队首）
         if (state.autoFollow) {
@@ -99,6 +103,16 @@
         }
       }).catch(() => {});
     }, 2500);
+  }
+
+  // 当前用户角色：admin 才显示「初始化/销毁沙箱」入口（任务流转走 /jobs/:id/ensure，与角色无关）
+  async function loadUserRole() {
+    try {
+      if (!supabase || !session) return;
+      const { data } = await supabase.from('profiles').select('role').eq('user_id', session.user.id).single();
+      if (data && data.role) state.userRole = data.role;
+    } catch { /* 默认 user */ }
+    refreshStatus(); // 按角色刷新按钮可见性
   }
 
   // 流水线排序：解析中 > 准备/排队 > 其他，同级按创建时间倒序
@@ -1000,12 +1014,12 @@
       const started = ok && h.sandbox && h.sandbox.state === 'started';
       $('#st-daytona').className = 'dot ' + (ok ? 'dot-ok' : 'dot-err');
       $('#cloud-chip-txt').textContent = ok ? (started ? '就绪' : '待初始化') : '离线';
-      // 初始化按钮仅在"待初始化"时展示：就绪时点了无意义，离线时点了也白点
-      $('#btn-init').hidden = state.initBusy || !(ok && h.sandbox && h.sandbox.state !== 'started');
+      // 初始化按钮仅在"待初始化"时展示（且仅 admin）；就绪时点了无意义，离线时点了也白点
+      $('#btn-init').hidden = state.initBusy || state.userRole !== 'admin' || !(ok && h.sandbox && h.sandbox.state !== 'started');
       $('#st-sandbox').textContent = h.sandbox ? h.sandbox.state : '—';
       $('#st-workdir').textContent = h.workDir || '—';
-      // 销毁沙箱是低频排障操作，收进状态栏：系统记录过沙箱才显示
-      $('#btn-destroy').hidden = !h.sandbox;
+      // 销毁沙箱是低频排障操作（仅 admin），收进状态栏：系统记录过沙箱才显示
+      $('#btn-destroy').hidden = state.userRole !== 'admin' || !h.sandbox;
     } catch { /* noop */ }
   }
 
