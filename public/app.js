@@ -741,7 +741,7 @@
     const modeLabel = { hybrid: '混合', keyword: '关键词', semantic: '语义' }[mode] || mode;
     if (!hits.length) {
       res.innerHTML = `<div class="empty-state"><p>未找到与「${esc(q)}」相关的内容</p>
-        ${degraded ? `<p class="empty-sub">${esc(error || '语义检索不可用，请配置 EMBEDDING_API_KEY 后重试')}</p>` : ''}</div>`;
+        ${degraded ? `<p class="empty-sub">${esc(error || '当前为关键词检索；配置 EMBEDDING_API_KEY 后可启用语义检索')}</p>` : ''}</div>`;
       return;
     }
     const docCount = new Set(hits.map((h) => h.docId)).size;
