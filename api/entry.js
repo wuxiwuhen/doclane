@@ -28,6 +28,8 @@ import trash from '../routes/trash.js';
 import trashDoc from '../routes/trash-doc.js';
 
 // 顺序即优先级：具体路径（batch-action / trash/clear）必须排在 :id 通配之前
+const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 const ROUTES = [
   ['hello', hello],
   ['health', health],
@@ -74,6 +76,8 @@ export default async function handler(req, res) {
       }
       if (i >= segs.length) { ok = false; break; }
       if (p[i].startsWith(':')) {
+        // :id 参数强制 UUID 格式（防 PostgREST 查询注入 / 路径穿越）
+        if (p[i].slice(1) === 'id' && !UUID_RE.test(segs[i])) { ok = false; break; }
         params[p[i].slice(1)] = segs[i];
       } else if (p[i] !== segs[i]) {
         ok = false; break;

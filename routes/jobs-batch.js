@@ -11,19 +11,22 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: '参数错误' });
   }
   const ok = [], failed = [];
+  const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
   for (const id of ids) {
     try {
+      if (!UUID_RE.test(String(id))) throw new Error('非法任务 id');
       const rows = await db.select('jobs', `id=eq.${id}&select=*&limit=1`);
       const job = rows[0];
       if (!job) throw new Error('任务不存在');
+      if (job.owner_id !== user.userId && user.role !== 'admin') throw new Error('无权访问该任务');
       if (action === 'delete') {
         if (['preparing', 'running'].includes(job.status)) throw new Error('解析中不可删除');
         if (job.deleted_at) throw new Error('任务已在回收站');
+        // 软删除：知识库数据保留（恢复即完整还原），检索由 search/kb 过滤
         await db.update('jobs', 'id', id, { deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
-        try { await db.remove('documents', 'id', id); } catch { /* ignore */ }
       } else if (action === 'retry') {
         if (['preparing', 'running'].includes(job.status)) throw new Error('解析中不可重试');
-        try { await db.remove('documents', 'id', id); } catch { /* ignore */ }
+        // drain.py 幂等入库（先清旧记录），无需预删 documents
         await db.update('jobs', 'id', id, {
           status: 'uploaded', files: [], main_md_path: null, error: null, quality: null,
           logs: [{ t: Date.now(), msg: '批量重试：重新入队' }], updated_at: new Date().toISOString(),

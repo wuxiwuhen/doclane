@@ -16,6 +16,9 @@ export default async function handler(req, res) {
   const rows = await db.select('jobs', `id=eq.${req.query.id}&select=main_md_path,corrections,owner_id&limit=1`);
   const job = rows[0];
   if (!job?.main_md_path) return res.status(404).json({ error: '任务不存在或无可修正正文' });
+  if (job.owner_id !== user.userId && user.role !== 'admin') {
+    return res.status(403).json({ error: '无权访问该任务' });
+  }
   const buf = await storage.read('outputs', `${req.query.id}/${job.main_md_path}`);
   const md = applyCorrections(buf.toString('utf8'), job.corrections);
   res.setHeader('Content-Type', 'text/markdown; charset=utf-8');

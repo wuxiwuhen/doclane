@@ -4,7 +4,8 @@ import { db } from '../api/_lib/supabase.js';
 import { signedUrl } from '../api/_lib/supabase.js';
 
 export default async function handler(req, res) {
-  const rows = await db.select('jobs', `id=eq.${req.query.id}&select=input_storage_path&limit=1`);
+  // 仅对未软删任务开放（回收站/已删除任务的原文件不再可下载）
+  const rows = await db.select('jobs', `id=eq.${req.query.id}&select=input_storage_path&deleted_at=is.null&limit=1`);
   const job = rows[0];
   if (!job?.input_storage_path) return res.status(404).json({ error: '原始文件不存在' });
   try {

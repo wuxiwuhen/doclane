@@ -5,6 +5,8 @@ import { db, storage, configured } from '../api/_lib/supabase.js';
 import { rowToJob, isSupported, extOf } from '../api/_lib/jobs.js';
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 10); // 单文件大小上限（防单用户耗尽额度）
+const MAX_ACTIVE_JOBS = Number(process.env.MAX_ACTIVE_JOBS || 5);      // 每用户活跃任务上限（防沙箱风暴）
+const MAX_JOBS_PER_HOUR = Number(process.env.MAX_JOBS_PER_HOUR || 20); // 每用户每小时创建上限
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);
@@ -18,6 +20,18 @@ export default async function handler(req, res) {
     }
     if (Number(size || 0) > MAX_UPLOAD_MB * 1024 * 1024) {
       return res.status(400).json({ error: `文件超过 ${MAX_UPLOAD_MB}MB 上限` });
+    }
+    // 配额：活跃任务数 + 创建速率（防攻击者无限触发沙箱/MinerU 烧 Daytona 额度）
+    const active = await db.select('jobs',
+      `owner_id=eq.${user.userId}&status=in.(queued,uploaded,preparing,running)&select=count`);
+    if ((active[0]?.count || 0) >= MAX_ACTIVE_JOBS) {
+      return res.status(429).json({ error: `活跃任务已达上限（${MAX_ACTIVE_JOBS}），请等待完成或清理` });
+    }
+    const since = new Date(Date.now() - 3600e3).toISOString();
+    const recent = await db.select('jobs',
+      `owner_id=eq.${user.userId}&created_at=gte.${since}&select=count`);
+    if ((recent[0]?.count || 0) >= MAX_JOBS_PER_HOUR) {
+      return res.status(429).json({ error: `创建任务过于频繁（每小时上限 ${MAX_JOBS_PER_HOUR}），请稍后再试` });
     }
     const id = randomUUID();
     const ext = extOf(name);

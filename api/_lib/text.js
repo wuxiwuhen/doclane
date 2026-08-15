@@ -13,22 +13,23 @@ export function toBigrams(text) {
     .trim();
 }
 
-/** 原文定位查询词，生成 <mark> 高亮片段 */
+/** 原文定位查询词，生成 <mark> 高亮片段（查询词转义，防注入 HTML） */
 export function highlightSnippet(text, query, ctx = 60) {
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const t = String(text ?? '');
   const words = String(query ?? '').split(/\s+/).filter(Boolean);
-  if (!words.length) return t.slice(0, 200);
+  if (!words.length) return esc(t.slice(0, 200));
   let first = -1;
   for (const w of words) {
     const idx = t.indexOf(w);
     if (idx >= 0 && (first < 0 || idx < first)) first = idx;
   }
-  if (first < 0) return t.slice(0, 200);
+  if (first < 0) return esc(t.slice(0, 200));
   const start = Math.max(0, first - ctx);
   const end = Math.min(t.length, first + ctx);
   let snippet = (start > 0 ? '…' : '') + t.slice(start, end) + (end < t.length ? '…' : '');
   for (const w of words) {
-    snippet = snippet.split(w).join(`<mark>${w}</mark>`);
+    snippet = snippet.split(w).join(`<mark>${esc(w)}</mark>`);
   }
   return snippet;
 }

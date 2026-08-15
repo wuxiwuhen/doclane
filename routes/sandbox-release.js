@@ -10,7 +10,9 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'unauthorized' });
   }
   const { jobId } = req.body || {};
-  if (!jobId) return res.status(400).json({ error: 'jobId required' });
+  if (!jobId || !/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(String(jobId))) {
+    return res.status(400).json({ error: 'jobId required' });
+  }
   try {
     const rows = await db.select('jobs', `id=eq.${jobId}&select=owner_id,status&limit=1`);
     const job = rows[0];

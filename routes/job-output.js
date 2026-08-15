@@ -5,10 +5,12 @@ import { db } from '../api/_lib/supabase.js';
 import { signedUrl } from '../api/_lib/supabase.js';
 
 export default async function handler(req, res) {
-  const rows = await db.select('jobs', `id=eq.${req.query.id}&select=owner_id&limit=1`);
+  // 仅对未软删任务开放；rel 做基本路径清洗（防 .. 穿越签名路径）
+  const rows = await db.select('jobs', `id=eq.${req.query.id}&select=owner_id&deleted_at=is.null&limit=1`);
   const job = rows[0];
   if (!job) return res.status(404).json({ error: '任务不存在' });
-  const rel = (req.query.path || []).join('/');
+  const raw = (req.query.path || []).join('/');
+  const rel = raw.split('/').filter((s) => s && s !== '.' && s !== '..').join('/');
   if (!rel) return res.status(400).json({ error: 'path required' });
   try {
     const url = await signedUrl('outputs', `${req.query.id}/${rel}`, 3600);

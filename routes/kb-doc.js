@@ -13,6 +13,12 @@ export default async function handler(req, res) {
     return res.json({ document: doc });
   }
   if (req.method === 'DELETE') {
+    // 删除文档 = 删除他人知识库内容，仅 owner/admin 可操作
+    const jrows = await db.select('jobs', `id=eq.${doc.id}&select=owner_id&limit=1`);
+    const j = jrows[0];
+    if (!j || (j.owner_id !== user.userId && user.role !== 'admin')) {
+      return res.status(403).json({ error: '无权删除该文档' });
+    }
     await db.remove('documents', 'id', doc.id);
     try {
       await db.update('jobs', 'id', doc.id, { deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() });
