@@ -86,6 +86,17 @@ export async function ensureSandbox(userId) {
         });
         return { ok: true, building: true, message: '快照构建中（首次约 5-20 分钟），构建完成后自动继续' };
       }
+      // 快照存在但需确认构建状态：构建中返回 building 等待，失败则报错，
+      // 只有 ready/active 等就绪态才创建沙箱（否则拿未完成快照建沙箱会卡死）
+      const st = String(hit.state || hit.status || '').toLowerCase();
+      const READY = ['ready', 'active', 'available', 'completed', 'built', 'ok'];
+      const FAILED = ['error', 'build_failed', 'failed', 'destroyed', 'deleted'];
+      if (FAILED.includes(st)) {
+        return { ok: false, error: `快照构建失败（${st}），请删除后重试或检查 Daytona 构建日志` };
+      }
+      if (!READY.includes(st)) {
+        return { ok: true, building: true, message: '快照构建中（首次约 5-20 分钟），构建完成后自动继续' };
+      }
       // 快照模式：沙箱继承快照规格（Daytona API 不接受此处传 cpu/memory/disk）
       await c.createSandbox({ name, snapshot: hit.name, autoStopInterval: AUTO_STOP_MINUTES, ttlMinutes: SANDBOX_TTL_MIN });
       return { ok: true, warming: true, message: '沙箱创建中（约 10-60 秒），稍候自动继续' };
