@@ -208,6 +208,20 @@ function localOutputPath(jobId, rel) {
   return path.join(DATA_DIR, 'outputs', jobId, String(rel || '').replace(/^\/+/, ''));
 }
 
+// 用完即毁：该用户无排队/待解析任务则销毁沙箱（与云模式 release 一致）
+async function releaseLocalSandbox(ownerId, currentJobId) {
+  try {
+    const pending = await db.select('jobs',
+      `owner_id=eq.${ownerId}&status=in.(queued,uploaded)&select=id&limit=5`);
+    const hasNext = (pending || []).some((j) => j.id !== currentJobId);
+    if (!hasNext) {
+      await destroySandbox(sandboxNameFor(ownerId));
+      return true;
+    }
+  } catch { /* 查询/销毁失败不阻塞 */ }
+  return false;
+}
+
 async function ensureLocal(jobId) {
   let job = null;
   try {
@@ -237,6 +251,8 @@ async function ensureLocal(jobId) {
         status: 'error', error: String(msg).slice(0, 500), updated_at: new Date().toISOString(),
       });
     } catch { /* 忽略 */ }
+    // 失败同样用完即毁（无排队任务则销毁沙箱）
+    try { await releaseLocalSandbox(job.owner_id, jobId); } catch { /* 忽略 */ }
     return { ok: true, started: true, error: String(msg).slice(0, 200) };
   };
 
@@ -374,6 +390,8 @@ async function ensureLocal(jobId) {
       quality: { level: 'ok' }, logs,
       updated_at: new Date().toISOString(),
     });
+    // 用完即毁：无排队任务则销毁沙箱（本地模式）
+    await releaseLocalSandbox(job.owner_id, jobId);
     return { ok: true, started: true };
   } catch (e) {
     return fail(e.message || e);
