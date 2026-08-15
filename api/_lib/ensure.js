@@ -240,14 +240,16 @@ async function ensureLocal(jobId) {
     const tb = await c.toolbox(sb);
 
     // 1) 注入 drain.py + 上传输入文件
-    await tb.uploadFile('/root/drain.py', Buffer.from(drainSource), 'drain.py');
+    //    用 /tmp 下按任务隔离的目录（沙箱内用户非 root，/root 无写权限）
+    const W = '/tmp/doclane-' + jobId;
+    await tb.uploadFile(W + '/drain.py', Buffer.from(drainSource), 'drain.py');
     const inputBuf = await storage.read('inputs', job.input_storage_path);
-    const inputPath = '/root/input' + (job.ext || '.bin');
+    const inputPath = W + '/input' + (job.ext || '.bin');
     await tb.uploadFile(inputPath, inputBuf, 'input' + (job.ext || '.bin'));
 
     // 2) 执行（drain.py --local：纯文件计算；stdout 即日志）
     const tmo = Math.min(40 * 60, Number(process.env.JOB_TIMEOUT_MIN || 30) * 60);
-    const r = await tb.exec(`python3 /root/drain.py ${jobId} --local ${inputPath} /root/out`, {}, tmo);
+    const r = await tb.exec(`python3 ${W}/drain.py ${jobId} --local ${inputPath} ${W}/out`, {}, tmo);
     const outLines = String(r.result || '').split('\n').filter(Boolean);
     const logs = oldLogs.concat(outLines.map(log));
     if (r.exitCode !== 0) {
@@ -259,12 +261,12 @@ async function ensureLocal(jobId) {
     }
 
     // 3) 拉回产物（按 manifest.json）
-    const manifestRaw = await tb.downloadFile('/root/out/manifest.json').then((b) => b.toString('utf8'));
+    const manifestRaw = await tb.downloadFile(W + '/out/manifest.json').then((b) => b.toString('utf8'));
     const manifest = JSON.parse(manifestRaw);
     const saved = [];
     let mainMd = null;
     for (const m of manifest) {
-      const buf = await tb.downloadFile('/root/out/' + m.rel);
+      const buf = await tb.downloadFile(W + '/out/' + m.rel);
       const abs = localOutputPath(jobId, m.rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, buf);
