@@ -17,9 +17,12 @@ const AUTO_STOP_MINUTES = Number(process.env.AUTO_STOP_MINUTES || 60);
 // 沙箱寿命上限：即使释放逻辑失效，Daytona 侧也会在 TTL 到期后回收（防额度跑空）
 const SANDBOX_TTL_MIN = Number(process.env.SANDBOX_TTL_MIN || 180);
 // 沙箱资源规格（默认 2核/4G/10G；1G 内存无法运行 MinerU，会 OOM）
+// 注意：快照模式下规格由快照决定（createSnapshot 时传入），沙箱继承
 const SANDBOX_CPU = Number(process.env.SANDBOX_CPU || 2);
 const SANDBOX_MEMORY_GB = Number(process.env.SANDBOX_MEMORY_GB || 4);
 const SANDBOX_DISK_GB = Number(process.env.SANDBOX_DISK_GB || 10);
+const REGION = process.env.REGION || 'us';
+const SANDBOX_CLASS = process.env.SANDBOX_CLASS || 'container';
 const LOCAL_MODE = process.env.DATA_BACKEND === 'local';
 const DATA_DIR = process.env.DATA_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'data');
 
@@ -75,13 +78,16 @@ export async function ensureSandbox(userId) {
           "    pip install --no-cache-dir 'mineru[core]>=3.4.0' && pip cache purge && \\",
           '    mineru-models-download -s huggingface -m pipeline || true',
         ].join('\n');
-        await c.createSnapshot({ name: SNAPSHOT_NAME, buildInfo: { dockerfileContent: dockerfile } });
+        await c.createSnapshot({
+          name: SNAPSHOT_NAME,
+          buildInfo: { dockerfileContent: dockerfile },
+          cpu: SANDBOX_CPU, memory: SANDBOX_MEMORY_GB, disk: SANDBOX_DISK_GB,
+          regionId: REGION, sandboxClass: SANDBOX_CLASS,
+        });
         return { ok: true, building: true, message: '快照构建中（首次约 5-20 分钟），构建完成后自动继续' };
       }
-      await c.createSandbox({
-        name, snapshot: hit.name, autoStopInterval: AUTO_STOP_MINUTES, ttlMinutes: SANDBOX_TTL_MIN,
-        cpu: SANDBOX_CPU, memory: SANDBOX_MEMORY_GB, disk: SANDBOX_DISK_GB,
-      });
+      // 快照模式：沙箱继承快照规格（Daytona API 不接受此处传 cpu/memory/disk）
+      await c.createSandbox({ name, snapshot: hit.name, autoStopInterval: AUTO_STOP_MINUTES, ttlMinutes: SANDBOX_TTL_MIN });
       return { ok: true, warming: true, message: '沙箱创建中（约 10-60 秒），稍候自动继续' };
     }
 
