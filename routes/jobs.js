@@ -21,6 +21,9 @@ export default async function handler(req, res) {
     if (Number(size || 0) > MAX_UPLOAD_MB * 1024 * 1024) {
       return res.status(400).json({ error: `文件超过 ${MAX_UPLOAD_MB}MB 上限` });
     }
+    if (Number(size || 0) <= 0) {
+      return res.status(400).json({ error: '文件为空，无法上传' });
+    }
     // 配额：活跃任务数 + 创建速率（防攻击者无限触发沙箱/MinerU 烧 Daytona 额度）
     const active = await db.select('jobs',
       `owner_id=eq.${user.userId}&status=in.(queued,uploaded,preparing,running)&select=count`);

@@ -327,6 +327,11 @@
   }
 
   function uploadOne(file) {
+    // 空文件拦截（剪贴板空图/坏文件直接提示，避免空文件进 MinerU）
+    if (!file.size) {
+      flashToast('文件为空，无法上传');
+      return;
+    }
     // 上传前大小校验（服务端同样强校验）
     const maxMb = state.maxUploadMb || 10;
     if (file.size > maxMb * 1024 * 1024) {
