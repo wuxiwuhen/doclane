@@ -26,6 +26,7 @@ import jobOriginal from '../routes/job-original.js';
 import jobOutput from '../routes/job-output.js';
 import kb from '../routes/kb.js';
 import kbDoc from '../routes/kb-doc.js';
+import jobExportPdf from '../routes/job-export-pdf.js';
 import search from '../routes/search.js';
 import trash from '../routes/trash.js';
 import trashDoc from '../routes/trash-doc.js';
@@ -45,6 +46,7 @@ const ROUTES = [
   ['jobs', jobs],
   ['jobs/batch-action', jobsBatch],
   ['jobs/:id/uploaded', jobUploaded],
+  ['jobs/:id/export-pdf', jobExportPdf],
   ['jobs/:id/cancel', jobCancel],
   ['jobs/:id/retry', jobRetry],
   ['jobs/:id/ensure', jobEnsure],

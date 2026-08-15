@@ -653,9 +653,10 @@
     $('#d-meta').textContent = meta.join(' · ');
     $('#tab-files-count').textContent = (job.files || []).length ? ` ${job.files.length}` : '';
 
-    // 部署版暂不支持服务端 PDF 导出（改用浏览器打印），隐藏按钮
+    // 导出 PDF：服务端保真渲染（本地用系统 Chrome，Vercel 用无服务器 Chromium）
     const dlBtn = $('#btn-download-md');
-    dlBtn.hidden = true;
+    dlBtn.hidden = !(job.status === 'done' && job.mainMd);
+    if (job.status === 'done' && job.mainMd) dlBtn.href = `/api/jobs/${job.id}/export-pdf`;
 
     const mdView = $('#md-view');
     const mdEmpty = $('#md-empty');
