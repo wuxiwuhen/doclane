@@ -16,6 +16,10 @@ const SANDBOX_NAME = process.env.SANDBOX_NAME || 'mineru-extractor-sandbox';
 const AUTO_STOP_MINUTES = Number(process.env.AUTO_STOP_MINUTES || 60);
 // 沙箱寿命上限：即使释放逻辑失效，Daytona 侧也会在 TTL 到期后回收（防额度跑空）
 const SANDBOX_TTL_MIN = Number(process.env.SANDBOX_TTL_MIN || 180);
+// 沙箱资源规格（默认 2核/4G/10G；1G 内存无法运行 MinerU，会 OOM）
+const SANDBOX_CPU = Number(process.env.SANDBOX_CPU || 2);
+const SANDBOX_MEMORY_GB = Number(process.env.SANDBOX_MEMORY_GB || 4);
+const SANDBOX_DISK_GB = Number(process.env.SANDBOX_DISK_GB || 10);
 const LOCAL_MODE = process.env.DATA_BACKEND === 'local';
 const DATA_DIR = process.env.DATA_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'data');
 
@@ -74,7 +78,10 @@ export async function ensureSandbox(userId) {
         await c.createSnapshot({ name: SNAPSHOT_NAME, buildInfo: { dockerfileContent: dockerfile } });
         return { ok: true, building: true, message: '快照构建中（首次约 5-20 分钟），构建完成后自动继续' };
       }
-      await c.createSandbox({ name, snapshot: hit.name, autoStopInterval: AUTO_STOP_MINUTES, ttlMinutes: SANDBOX_TTL_MIN });
+      await c.createSandbox({
+        name, snapshot: hit.name, autoStopInterval: AUTO_STOP_MINUTES, ttlMinutes: SANDBOX_TTL_MIN,
+        cpu: SANDBOX_CPU, memory: SANDBOX_MEMORY_GB, disk: SANDBOX_DISK_GB,
+      });
       return { ok: true, warming: true, message: '沙箱创建中（约 10-60 秒），稍候自动继续' };
     }
 
@@ -199,7 +206,19 @@ async function ensureLocal(jobId) {
   try {
     const s = await ensureSandbox(job.owner_id);
     if (!s.ok) return s;
-    if (s.building || s.warming) return s;
+    if (s.building || s.warming) {
+      // 写进度日志（去重），让用户看到沙箱在准备而不是"无响应"
+      try {
+        const old = Array.isArray(job.logs) ? job.logs : [];
+        if (old[old.length - 1]?.msg !== s.message) {
+          await db.update('jobs', 'id', jobId, {
+            logs: old.concat({ t: Date.now(), msg: s.message }),
+            updated_at: new Date().toISOString(),
+          });
+        }
+      } catch { /* 忽略 */ }
+      return s;
+    }
 
     // 已在解析中则跳过（幂等）
     try {
