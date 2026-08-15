@@ -5,7 +5,7 @@
 //   由本地 server 通过 toolbox 推输入/执行 drain.py --local/拉产物/入库
 import fs from 'node:fs';
 import path from 'node:path';
-import { DaytonaClient, DaytonaError } from '../../lib/daytona.js';
+import { DaytonaClient, DaytonaError, sleep } from '../../lib/daytona.js';
 import drainSource from './drain_source.js';
 import { db, storage } from './store.js';
 import { toBigrams } from './text.js';
@@ -271,22 +271,41 @@ async function ensureLocal(jobId) {
     const inputPath = W + '/input' + (job.ext || '.bin');
     await tb.uploadFile(inputPath, inputBuf, 'input' + (job.ext || '.bin'));
 
-    // 2) 执行（drain.py --local：纯文件计算；stdout 即日志）
+    // 2) 后台启动（process/execute 有执行时长上限，长任务必须 nohup 后台跑）
     const tmo = Math.min(40 * 60, Number(process.env.JOB_TIMEOUT_MIN || 30) * 60);
-    const r = await tb.exec(`python3 ${W}/drain.py ${jobId} --local ${inputPath} ${W}/out`, {}, tmo);
-    const outLines = String(r.result || '').split('\n').filter(Boolean);
-    const logs = oldLogs.concat(outLines.map(log));
-    if (r.exitCode !== 0) {
-      await db.update('jobs', 'id', jobId, {
-        status: 'error', error: outLines.slice(-2).join('\n').slice(0, 500), logs,
-        updated_at: new Date().toISOString(),
-      });
-      return { ok: true, started: true, error: '任务执行失败' };
+    const st = await tb.exec(
+      `mkdir -p ${W}/out && setsid nohup python3 ${W}/drain.py ${jobId} --local ${inputPath} ${W}/out >${W}/run.log 2>&1 & echo STARTED`,
+      {}, 30);
+    if (!/STARTED/.test(st.result || '')) {
+      return fail('无法启动任务执行器：' + (st.result || '').slice(0, 200));
     }
 
-    // 3) 拉回产物（按 manifest.json）
-    const manifestRaw = await tb.downloadFile(W + '/out/manifest.json').then((b) => b.toString('utf8'));
-    const manifest = JSON.parse(manifestRaw);
+    // 3) 轮询产物（manifest.json 出现 = 完成；进程退出但无 manifest = 失败）
+    const deadline = Date.now() + tmo * 1000;
+    let manifest = null;
+    let lastErr = '';
+    while (Date.now() < deadline) {
+      await sleep(10000);
+      // 尝试拉 manifest
+      try {
+        manifest = JSON.parse(await tb.downloadFile(W + '/out/manifest.json').then((b) => b.toString('utf8')));
+        break;
+      } catch { /* 还没完成 */ }
+      // 进程是否已退出（退出且无 manifest → 拉日志报错）
+      try {
+        const ps = await tb.exec(`pgrep -f 'drain.py ${jobId}' >/dev/null 2>&1 || echo DEAD`, {}, 15);
+        if (/DEAD/.test(ps.result || '')) {
+          try { lastErr = await tb.downloadFile(W + '/run.log').then((b) => b.toString('utf8')); } catch { /* 无日志 */ }
+          break;
+        }
+      } catch { /* 探测失败继续等 */ }
+    }
+    if (!manifest) {
+      const detail = (lastErr || '任务超时（' + Math.round(tmo / 60) + ' 分钟）').slice(-800);
+      return fail(detail);
+    }
+
+    // 4) 拉回产物（按 manifest.json）
     const saved = [];
     let mainMd = null;
     for (const m of manifest) {
@@ -317,7 +336,7 @@ async function ensureLocal(jobId) {
     await db.update('jobs', 'id', jobId, {
       status: 'done', files: saved, main_md_path: mainMd, error: null,
       quality: { level: 'ok' },
-      logs: logs.concat(log(`完成：${saved.length} 个产物`)),
+      logs: oldLogs.concat(log('沙箱已就绪，任务执行器已启动'), log(`完成：${saved.length} 个产物`)),
       updated_at: new Date().toISOString(),
     });
     return { ok: true, started: true };
