@@ -754,31 +754,53 @@
   }
   document.querySelectorAll('.tab').forEach((t) => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
-  /* 导出 PDF：fetch（带鉴权头）+ blob 下载（<a href> 导航不带 token 会 401） */
+  /* 导出 PDF：浏览器打印（页面能渲染什么，PDF 就有什么——字体/公式/图片全用浏览器能力） */
   $('#btn-download-md').addEventListener('click', async (e) => {
     e.preventDefault();
-    const href = e.currentTarget.getAttribute('href');
-    if (!href) return;
+    const mdView = document.getElementById('md-view');
+    const mdHtml = mdView ? mdView.innerHTML : '';
+    if (!mdHtml || mdHtml === '<div class="empty-state"></div>') {
+      flashToast('暂无正文可导出');
+      return;
+    }
     const btn = e.currentTarget;
     const old = btn.textContent;
     btn.textContent = '生成中…';
     try {
-      const r = await apiFetch(href);
-      if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
-        flashToast('导出失败：' + (j.error || r.status));
-        return;
-      }
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'doclane-' + (href.match(/jobs\/([0-9a-f-]{8})/) || [])[1] + '.pdf';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      flashToast('PDF 已导出');
+      // KaTeX 样式（同源拉取，保证公式渲染）
+      let katexCss = '';
+      try { katexCss = await fetch('/vendor/katex/katex.min.css').then((r) => r.text()); } catch { /* 无则跳过 */ }
+      const printCss = `
+        body { font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",Georgia,serif; color:#222; font-size:13px; line-height:1.75; margin:0; }
+        .doc { max-width: 760px; margin: 0 auto; padding: 32px; }
+        h1,h2,h3,h4 { font-weight:700; line-height:1.3; }
+        h1 { font-size:26px; border-bottom:2px solid #333; padding-bottom:8px; margin:0 0 16px; }
+        h2 { font-size:20px; margin-top:26px; }
+        h3 { font-size:16px; margin-top:20px; }
+        p { margin:10px 0; }
+        ul,ol { margin:10px 0; padding-left:26px; }
+        li { margin:4px 0; }
+        table { border-collapse:collapse; width:100%; margin:14px 0; font-size:12px; }
+        th,td { border:1px solid #b8b2a4; padding:6px 10px; text-align:left; }
+        th { background:#f2efe8; }
+        img { max-width:100%; }
+        pre { background:#f6f4ee; padding:12px 14px; overflow-x:auto; font-size:11px; line-height:1.6; white-space:pre-wrap; }
+        code { background:#f2efe8; padding:1px 4px; font-size:12px; }
+        pre code { background:none; padding:0; }
+        blockquote { border-left:3px solid #c8402a; margin:12px 0; padding:6px 14px; color:#555; font-style:italic; }
+        a { color:#9f2f1d; }
+        hr { border:none; border-top:1px solid #ccc; margin:22px 0; }
+        .katex { font-size:1.05em; }
+        .katex-display { margin:12px 0; overflow-x:auto; }
+        @media print { body { margin: 0; } .doc { padding: 0; } }
+      `;
+      const w = window.open('', '_blank');
+      if (!w) { flashToast('浏览器拦截了新窗口，请允许弹窗后重试'); return; }
+      w.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>doclane</title><style>${katexCss}${printCss}</style></head><body><article class="doc">${mdHtml}</article><script>
+function readyPrint(){var imgs=[].slice.call(document.images);var p=imgs.map(function(i){return i.complete?Promise.resolve():new Promise(function(r){i.onload=i.onerror=r})});Promise.all(p).then(function(){setTimeout(function(){window.print()},200)})}
+if(document.readyState==='complete')readyPrint();else window.addEventListener('load',readyPrint);
+<\/script></body></html>`);
+      w.document.close();
     } catch (err) {
       flashToast('导出失败：' + (err.message || '网络错误'));
     } finally {
