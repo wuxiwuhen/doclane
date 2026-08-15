@@ -72,11 +72,18 @@ export async function ensureSandbox(userId) {
       const snaps = await c.listSnapshots();
       const hit = snaps.find((s) => s.name === SNAPSHOT_NAME || s.id === SNAPSHOT_NAME);
       if (!hit) {
+        // 注意：必须用 python:3.11-slim（mineru 要求 >=3.10,<3.14；daytonaio/sandbox 基
+        // 像 Python 3.14 装不上 mineru）。pip 安装失败会直接导致构建失败（不吞错），
+        // 仅模型下载可容忍失败（失败则运行时自动下载）。
         const dockerfile = [
-          'FROM daytonaio/sandbox:0.8.0',
-          'RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu && \\',
-          "    pip install --no-cache-dir 'mineru[core]>=3.4.0' && pip cache purge && \\",
-          '    mineru-models-download -s huggingface -m pipeline || true',
+          'FROM python:3.11-slim',
+          'RUN apt-get update && apt-get install -y --no-install-recommends \\',
+          '        libgl1 libglib2.0-0 libgomp1 libsm6 libxext6 fonts-noto-cjk fonts-noto-core \\',
+          '    && rm -rf /var/lib/apt/lists/*',
+          'RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu',
+          "RUN pip install --no-cache-dir 'mineru[core]>=3.4.0' && pip cache purge",
+          'RUN mineru-models-download -s huggingface -m pipeline || true',
+          'ENTRYPOINT ["/bin/bash", "-c", "exec \\"$@\\"", "--"]',
         ].join('\n');
         await c.createSnapshot({
           name: SNAPSHOT_NAME,
