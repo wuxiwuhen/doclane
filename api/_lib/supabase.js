@@ -78,10 +78,14 @@ export const storage = {
 };
 
 // 生成签名 URL 完整地址（供 302 重定向 / 下载）
+// Storage sign 接口返回的是相对路径（如 /object/sign/{bucket}/{path}?token=...），
+// 需补上 /storage/v1 前缀才是有效端点
 export async function signedUrl(bucket, path, expiresIn = 3600) {
   const s = await storage.signUrl(bucket, path, expiresIn);
   const u = s.signedURL || s.signedUrl || s.url || '';
-  return u.startsWith('http') ? u : `${URL}${u}`;
+  if (u.startsWith('http')) return u;
+  const rel = u.startsWith('/') ? u : '/' + u;
+  return `${URL}/storage/v1${rel}`;
 }
 
 export function configured() {

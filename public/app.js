@@ -381,8 +381,27 @@
   }
 
   /* ---------- 任务列表 ---------- */
+  function fmtDur(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    if (sec < 60) return sec + 's';
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m + 'm' + (s ? String(s).padStart(2, '0') + 's' : '');
+  }
+
   function statusText(job) {
-    return job.status === 'queued' ? '排队中' : job.status === 'uploaded' ? '待解析' : job.status === 'preparing' ? '准备中' : job.status === 'running' ? '解析中' : job.status === 'done' ? '完成' : job.status === 'error' ? '失败' : job.status === 'cancelled' ? '已取消' : job.status;
+    if (job.status === 'queued') return '排队中';
+    if (job.status === 'uploaded') return '待解析';
+    if (job.status === 'preparing' || job.status === 'running') {
+      // 实时显示已运行时长（pollJob 每 2.2s 刷新）
+      const start = job.updatedAt || job.createdAt;
+      const sec = (Date.now() - start) / 1000;
+      const label = job.status === 'preparing' ? '准备中' : '解析中';
+      return label + ' · ' + fmtDur(sec);
+    }
+    if (job.status === 'done') return '完成';
+    if (job.status === 'error') return '失败';
+    if (job.status === 'cancelled') return '已取消';
+    return job.status;
   }
 
   function qualityBadge(job) {
