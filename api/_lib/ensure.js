@@ -2,6 +2,7 @@
 // 设计：docs/architecture.md §4.3 —— 快照秒开，不留常驻进程
 import { DaytonaClient, DaytonaError } from '../../lib/daytona.js';
 import drainSource from './drain_source.js';
+import { db } from './supabase.js';
 
 const SNAPSHOT_NAME = process.env.SNAPSHOT_NAME || 'mineru-snap-baked';
 const SANDBOX_NAME = process.env.SANDBOX_NAME || 'mineru-extractor-sandbox';
@@ -94,15 +95,25 @@ export async function startDrain(jobId) {
   return { ok: true, started: true };
 }
 
-/** ensure(jobId)：完整链路 = ensureSandbox +（就绪时）startDrain */
+/** ensure(jobId)：完整链路 = ensureSandbox +（就绪时）startDrain
+ *  可幂等续拉：任务已在 preparing/running 时跳过 startDrain，避免轮询重复启动；
+ *  startDrain 成功后立即置 preparing，堵住轮询竞态窗口。 */
 export async function ensure(jobId) {
   const s = await ensureSandbox();
   if (!s.ok) return s;
   if (s.building || s.warming) return s;
+  // 已在解析中则跳过（幂等续拉防重复启动）
   try {
-    const d = await startDrain(jobId);
-    return { ok: true, started: true, message: '任务执行器已启动' };
-  } catch (e) {
-    return { ok: false, error: e.message };
+    const rows = await db.select('jobs', `id=eq.${jobId}&select=status`);
+    if (rows[0] && ['preparing', 'running'].includes(rows[0].status)) {
+      return { ok: true, started: true, message: '任务已在解析中' };
+    }
+  } catch { /* 查询失败不阻塞启动 */ }
+  const d = await startDrain(jobId);
+  if (d.ok) {
+    try {
+      await db.update('jobs', 'id', jobId, { status: 'preparing', updated_at: new Date().toISOString() });
+    } catch { /* drain.py 会自行置 preparing，忽略 */ }
   }
+  return d;
 }
