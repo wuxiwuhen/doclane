@@ -1,7 +1,14 @@
 // store-local.js — 本地数据后端（阶段 A：纯本地模式）
 // 实现与 supabase.js 相同的 db/storage 接口语义（PostgREST 查询子集），
 // 数据存本地 SQLite（node:sqlite）+ data/ 目录文件。单用户本地模式。
-import { DatabaseSync } from 'node:sqlite';
+let DatabaseSync;
+try {
+  ({ DatabaseSync } = await import('node:sqlite'));
+} catch {
+  console.error('✖ 本地模式需要 Node.js ≥ 22.5（node:sqlite 模块）。当前版本过低：' + process.version);
+  console.error('  请升级 Node：https://nodejs.org  (建议 LTS 22.x)');
+  process.exit(1);
+}
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
