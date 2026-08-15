@@ -509,7 +509,8 @@
           }).catch(() => flashToast('重试失败'));
         } else if (act === 'cancel') {
           apiFetch(`/api/jobs/${job.id}/cancel`, { method: 'POST' }).then((r) => r.json()).then((d) => {
-            if (d.job) { state.jobs.set(job.id, d.job); renderJobList(); flashToast('已取消'); }
+            // 服务端返回 { ok: true }；成功即本地更新状态，避免误报失败
+            if (d.ok) { job.status = 'cancelled'; state.jobs.set(job.id, job); renderJobList(); refreshAllLists(); flashToast('已取消'); }
             else flashToast(d.error || '取消失败');
           }).catch(() => flashToast('取消失败'));
         }
