@@ -20,6 +20,7 @@
     initBusy: false, // 初始化进行中（防止状态轮询中途隐藏按钮）
     initErrShown: false, // 环境初始化错误只提示一次（避免轮询刷屏）
     userRole: 'user', // 当前用户角色（admin 才显示初始化/销毁入口）
+    maxUploadMb: 10, // 单文件大小上限（health 接口动态更新）
   };
 
   /* ---------- 认证（Supabase Auth）+ 带 token 的请求 ---------- */
@@ -251,6 +252,12 @@
   }
 
   function uploadOne(file) {
+    // 上传前大小校验（服务端同样强校验）
+    const maxMb = state.maxUploadMb || 10;
+    if (file.size > maxMb * 1024 * 1024) {
+      flashToast(`文件超过 ${maxMb}MB 上限，无法上传`);
+      return;
+    }
     const tempId = 'tmp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     const card = buildJobCard({ id: tempId, originalName: file.name, size: file.size, status: 'queued', createdAt: Date.now(), logs: [] });
     card.querySelector('.pill').textContent = '上传中…';
@@ -1010,6 +1017,7 @@
   async function refreshStatus() {
     try {
       const h = await apiFetch('/api/health').then((r) => r.json());
+      if (h.maxUploadMb) state.maxUploadMb = h.maxUploadMb;
       const ok = h.daytona === 'ok';
       const started = ok && h.sandbox && h.sandbox.state === 'started';
       $('#st-daytona').className = 'dot ' + (ok ? 'dot-ok' : 'dot-err');
@@ -1061,7 +1069,7 @@
   $('#btn-destroy').addEventListener('click', async () => {
     const ok = await showConfirm({
       title: '销毁云端沙箱',
-      message: '确认销毁云端沙箱？本地已入库结果会保留，但沙箱内的模型缓存会清除，下次任务需重新构建环境。',
+      message: '确认销毁你的云端沙箱？已入库结果保留；模型在共享快照中不受影响，下次任务将从快照秒开重建。',
       confirmText: '销毁',
       danger: true,
       glyph: '⚠',

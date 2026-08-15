@@ -1,6 +1,7 @@
-// DELETE /api/admin/sandbox — 销毁沙箱（admin；有 running 任务时 409 保护）
+// DELETE /api/admin/sandbox — 销毁沙箱（admin）
+// 默认销毁当前登录用户自己的沙箱；带 ?all=1 销毁全部用户沙箱（有 running 任务时 409 保护）
 import { DaytonaClient } from '../lib/daytona.js';
-import { sandboxName } from '../api/_lib/ensure.js';
+import { sandboxNameFor, sandboxName, destroySandbox } from '../api/_lib/ensure.js';
 import { requireAdmin, audit } from '../api/_lib/auth.js';
 import { db } from '../api/_lib/supabase.js';
 
@@ -18,17 +19,24 @@ export default async function handler(req, res) {
   }
   try {
     const c = new DaytonaClient();
-    // 先停机再删除：部分云环境不允许直接删除 running 沙箱（停机失败不影响后续删除）
-    try { await c.stopSandbox(sandboxName()); } catch { /* 未运行/已停止 */ }
-    try {
-      await c.deleteSandbox(sandboxName());
-    } catch (e) {
-      // 仅当沙箱确实已不存在时视为成功；其他错误（权限/网络）如实抛出
-      let exists = true;
-      try { await c.getSandbox(sandboxName()); } catch { exists = false; }
-      if (exists) throw e;
+    if (req.query.all === '1') {
+      // 销毁全部用户沙箱（遍历 {SANDBOX_NAME}-* 前缀）
+      let list = [];
+      try { list = await c.listSandboxes(); } catch { list = []; }
+      const prefix = sandboxName() + '-';
+      let destroyed = 0;
+      for (const sb of list) {
+        const nm = sb.name || '';
+        if (nm.startsWith(prefix)) {
+          try { await destroySandbox(nm); destroyed++; } catch { /* 单个失败继续 */ }
+        }
+      }
+      audit(user, 'destroy_all_sandboxes', 'sandbox', sandboxName(), { destroyed });
+      return res.json({ ok: true, destroyed });
     }
-    audit(user, 'destroy_sandbox', 'sandbox', sandboxName(), {});
+    // 默认：销毁当前用户自己的沙箱
+    await destroySandbox(sandboxNameFor(user.userId));
+    audit(user, 'destroy_sandbox', 'sandbox', sandboxNameFor(user.userId), {});
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });

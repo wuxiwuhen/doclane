@@ -23,6 +23,10 @@ EMBED_BASE = (os.environ.get("EMBEDDING_BASE_URL") or "").rstrip("/")
 EMBED_KEY = os.environ.get("EMBEDDING_API_KEY", "")
 EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 JOB_ID = sys.argv[1] if len(sys.argv) > 1 else ""
+APP_URL = (os.environ.get("APP_URL") or "").rstrip("/")     # 任务结束回调（释放沙箱）
+RELEASE_SECRET = os.environ.get("RELEASE_SECRET", "")
+JOB_TIMEOUT_MIN = int(os.environ.get("JOB_TIMEOUT_MIN", "30"))  # 单任务总时长上限
+DEADLINE = time.time() + JOB_TIMEOUT_MIN * 60 if JOB_ID else 0  # 全局超时（防单个任务耗尽沙箱额度）
 
 MODEL_CACHE = os.path.expanduser("~/.cache/huggingface/hub/models--opendatalab--PDF-Extract-Kit-1.0")
 
@@ -122,23 +126,44 @@ def run_mineru(input_path, out_dir, on_log):
     flags = ["--backend", "pipeline"]
     cmd = ["mineru", "-p", str(input_path), "-o", str(out_dir)] + flags
     on_log(f"启动 MinerU: {' '.join(cmd)}（模型源 {model_src}）")
-    logf = open("/tmp/mineru-run.log", "ab")
+    logf = open(f"/tmp/mineru-{JOB_ID}.log", "ab")
     proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, env=env)
-    deadline = time.time() + 40 * 60
+    # 提取超时 = min(40 分钟, 任务剩余时长)
+    remain = int(DEADLINE - time.time()) if DEADLINE else 40 * 60
+    timeout_s = max(60, min(40 * 60, remain))
+    deadline = time.time() + timeout_s
     while proc.poll() is None:
         if time.time() > deadline:
             proc.kill()
-            raise RuntimeError("MinerU 提取超时（40 分钟）")
+            raise RuntimeError(f"MinerU 提取超时（{timeout_s // 60} 分钟）")
         time.sleep(10)
     logf.close()
     if proc.returncode != 0:
         tail = ""
         try:
-            tail = Path("/tmp/mineru-run.log").read_text(errors="ignore")[-1500:]
+            tail = Path(f"/tmp/mineru-{JOB_ID}.log").read_text(errors="ignore")[-1500:]
         except OSError:
             pass
         raise RuntimeError(f"MinerU 退出码 {proc.returncode}：\n{tail[-800:]}")
     on_log("提取完成，收集产物…")
+
+def check_deadline():
+    if DEADLINE and time.time() > DEADLINE:
+        raise RuntimeError(f"任务超时（{JOB_TIMEOUT_MIN} 分钟上限）")
+
+def release_sandbox():
+    """任务结束（成功/失败）回调 Vercel：该用户无排队任务则销毁沙箱（用完即毁）。
+    失败静默——沙箱还有 autoStop/TTL 兜底回收。"""
+    if not APP_URL:
+        return
+    try:
+        data = json.dumps({"jobId": JOB_ID}).encode()
+        req = urllib.request.Request(APP_URL + "/api/sandbox/release", data=data, method="POST",
+                                     headers={"Content-Type": "application/json",
+                                              "X-Release-Secret": RELEASE_SECRET})
+        urllib.request.urlopen(req, timeout=10)
+    except Exception:
+        pass
 
 # ---------- 主流程 ----------
 def main():
@@ -149,7 +174,7 @@ def main():
     append_log(job, "任务执行器已启动")
     set_status(job, "preparing")
     try:
-        work = Path("/tmp/doclane-work")
+        work = Path("/tmp/doclane-work") / JOB_ID   # 每任务独立工作目录（并发/重试隔离）
         (work / "out").mkdir(parents=True, exist_ok=True)
         input_path = work / ("input" + (job.get("ext") or ".bin"))
 
@@ -157,10 +182,12 @@ def main():
         append_log(job, "下载输入文件…")
         data = storage_get("inputs/" + job["input_storage_path"])
         input_path.write_bytes(data)
+        check_deadline()
 
         # 2. 提取
         set_status(job, "running")
         run_mineru(input_path, work / "out", lambda m: append_log(job, m))
+        check_deadline()
 
         # 3. 上传产物
         append_log(job, "上传产物到 Storage…")
@@ -175,12 +202,14 @@ def main():
             saved.append({"rel": rel, "size": f.stat().st_size, "isMd": is_md})
             if is_md and main_md_path is None:
                 main_md_path = rel
+            check_deadline()
         saved.sort(key=lambda x: (not x["isMd"], x["rel"]))
         if not main_md_path:
             raise RuntimeError("未找到任何 markdown 产物")
 
         # 4. 入库（文档 + chunk + bigram）——先清旧记录再写入（重试复用同一 job id，幂等）
         main_md = storage_get(f"outputs/{JOB_ID}/{main_md_path}").decode("utf-8", errors="replace")
+        check_deadline()
         append_log(job, f"入库知识库（{len(chunk_md(main_md))} 个片段）…")
         sb_delete("chunks", "doc_id", JOB_ID)
         sb_delete("documents", "id", JOB_ID)
@@ -207,6 +236,8 @@ def main():
             pass
         print("ERROR:", e, file=sys.stderr)
         sys.exit(1)
+    finally:
+        release_sandbox()  # 成功/失败都尝试释放沙箱（无排队任务则销毁，用完即毁）
 
 if __name__ == "__main__":
     main()

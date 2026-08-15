@@ -14,6 +14,7 @@ import jobUploaded from '../routes/job-uploaded.js';
 import jobCancel from '../routes/job-cancel.js';
 import jobRetry from '../routes/job-retry.js';
 import jobEnsure from '../routes/job-ensure.js';
+import sandboxRelease from '../routes/sandbox-release.js';
 import jobRestore from '../routes/job-restore.js';
 import jobCorrection from '../routes/job-correction.js';
 import jobCorrected from '../routes/job-corrected.js';
@@ -40,6 +41,7 @@ const ROUTES = [
   ['jobs/:id/cancel', jobCancel],
   ['jobs/:id/retry', jobRetry],
   ['jobs/:id/ensure', jobEnsure],
+  ['sandbox/release', sandboxRelease],
   ['jobs/:id/restore', jobRestore],
   ['jobs/:id/correction', jobCorrection],
   ['jobs/:id/corrected', jobCorrected],

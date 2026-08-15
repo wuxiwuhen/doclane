@@ -4,6 +4,8 @@ import { requireUser, audit } from '../api/_lib/auth.js';
 import { db, storage, configured } from '../api/_lib/supabase.js';
 import { rowToJob, isSupported, extOf } from '../api/_lib/jobs.js';
 
+const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 10); // 单文件大小上限（防单用户耗尽额度）
+
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);
   if (code) return res.status(code).json({ error: message });
@@ -13,6 +15,9 @@ export default async function handler(req, res) {
     const { name, size } = req.body || {};
     if (!name || !isSupported(name)) {
       return res.status(400).json({ error: `暂不支持该格式（支持: pdf docx xlsx pptx png jpg 等）` });
+    }
+    if (Number(size || 0) > MAX_UPLOAD_MB * 1024 * 1024) {
+      return res.status(400).json({ error: `文件超过 ${MAX_UPLOAD_MB}MB 上限` });
     }
     const id = randomUUID();
     const ext = extOf(name);
