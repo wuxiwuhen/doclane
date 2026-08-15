@@ -281,25 +281,28 @@ async function ensureLocal(jobId) {
       return fail('无法启动任务执行器：' + (st.result || '').slice(0, 200));
     }
 
-    // 3) 轮询产物（manifest.json 出现 = 完成；进程退出但无 manifest = 失败）
+    // 3) 轮询产物（manifest.json 出现 = 完成；run.log 出现 ERROR = 失败；总超时兜底）
+    //    注意：python:3.11-slim 沙箱无 pgrep/ps，进程探测不可用，改为日志/产物探测
     const deadline = Date.now() + tmo * 1000;
     let manifest = null;
     let lastErr = '';
+    let pollCount = 0;
     while (Date.now() < deadline) {
       await sleep(10000);
-      // 尝试拉 manifest
+      pollCount++;
+      // 尝试拉 manifest（出现 = 完成）
       try {
         manifest = JSON.parse(await tb.downloadFile(W + '/out/manifest.json').then((b) => b.toString('utf8')));
         break;
       } catch { /* 还没完成 */ }
-      // 进程是否已退出（退出且无 manifest → 拉日志报错）
-      try {
-        const ps = await tb.exec(`pgrep -f 'drain.py ${jobId}' >/dev/null 2>&1 || echo DEAD`, {}, 15);
-        if (/DEAD/.test(ps.result || '')) {
-          try { lastErr = await tb.downloadFile(W + '/run.log').then((b) => b.toString('utf8')); } catch { /* 无日志 */ }
-          break;
-        }
-      } catch { /* 探测失败继续等 */ }
+      // 每 3 轮拉一次 run.log 检测 ERROR（drain.py 失败会 print "ERROR:" 到 stderr）
+      if (pollCount % 3 === 0) {
+        try {
+          const logTxt = await tb.downloadFile(W + '/run.log').then((b) => b.toString('utf8'));
+          const m = logTxt.match(/ERROR:[\s\S]*/);
+          if (m) { lastErr = m[0].slice(0, 800); break; }
+        } catch { /* 日志暂不可读 */ }
+      }
     }
     if (!manifest) {
       const detail = (lastErr || '任务超时（' + Math.round(tmo / 60) + ' 分钟）').slice(-800);
