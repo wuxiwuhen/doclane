@@ -259,6 +259,16 @@ async function ensureLocal(jobId) {
       }
     } catch { /* 忽略 */ }
 
+    // 串行化：同用户已有其他任务在处理则排队（本地模式一次一个，
+    // 避免同一沙箱并发跑多个 MinerU 抢内存导致卡死）
+    try {
+      const busyRows = await db.select('jobs',
+        `owner_id=eq.${job.owner_id}&status=in.(preparing,running)&select=id&limit=10`);
+      if ((busyRows || []).some((j) => j.id !== jobId)) {
+        return { ok: true, started: false, message: '已有任务在解析，排队等待' };
+      }
+    } catch { /* 查询失败不阻塞 */ }
+
     await db.update('jobs', 'id', jobId, { status: 'preparing', updated_at: new Date().toISOString() });
     await pushLog('沙箱已就绪，任务执行器已启动');
 
