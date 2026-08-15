@@ -271,10 +271,11 @@ async function ensureLocal(jobId) {
     const inputPath = W + '/input' + (job.ext || '.bin');
     await tb.uploadFile(inputPath, inputBuf, 'input' + (job.ext || '.bin'));
 
-    // 2) 后台启动（process/execute 有执行时长上限，长任务必须 nohup 后台跑）
+    // 2) 后台启动（process/execute 有 ~30s 硬上限；后台必须用「子 shell」写法
+    //    `( setsid nohup cmd & )`，父命令立即结束，exec 才会快速返回）
     const tmo = Math.min(40 * 60, Number(process.env.JOB_TIMEOUT_MIN || 30) * 60);
     const st = await tb.exec(
-      `mkdir -p ${W}/out && setsid nohup python3 ${W}/drain.py ${jobId} --local ${inputPath} ${W}/out >${W}/run.log 2>&1 & echo STARTED`,
+      `mkdir -p ${W}/out && ( setsid nohup python3 ${W}/drain.py ${jobId} --local ${inputPath} ${W}/out >${W}/run.log 2>&1 < /dev/null & ) ; echo STARTED`,
       {}, 30);
     if (!/STARTED/.test(st.result || '')) {
       return fail('无法启动任务执行器：' + (st.result || '').slice(0, 200));
