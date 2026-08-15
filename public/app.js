@@ -359,7 +359,7 @@
       return;
     }
     if (state.selectMode) { box.innerHTML = ''; return; }
-    if (job.status === 'queued') {
+    if (job.status === 'queued' || job.status === 'uploaded') {
       html += `<button class="ja" data-act="cancel" title="取消排队">✕ 取消</button>`;
       html += `<button class="ja ja-danger" data-act="delete" title="删除任务及文件">🗑 删除</button>`;
     } else if (job.status === 'running') {
@@ -439,7 +439,7 @@
     }
     const all = sortJobs(state.jobs.values());
     return state.filter === 'all' ? all : all.filter((j) => {
-      if (state.filter === 'active') return ['running', 'queued'].includes(j.status);
+      if (state.filter === 'active') return ['running', 'queued', 'uploaded'].includes(j.status);
       if (state.filter === 'done') return j.status === 'done';
       if (state.filter === 'error') return j.status === 'error';
       if (state.filter === 'cancelled') return j.status === 'cancelled';
