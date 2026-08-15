@@ -22,11 +22,18 @@ export default async function handler(req, res) {
   }
   const encoded = encodeURIComponent(`*${bigrams}*`);
   const rows = await db.select('chunks',
-    `content_bigrams=ilike.${encoded}&select=id,doc_id,seq,content,documents(id,filename,ext,created_at)&limit=50`);
+    `content_bigrams=ilike.${encoded}&select=id,doc_id,seq,content,documents(id,filename,ext,created_at,jobs(deleted_at))&limit=100`);
+
+  // 排除回收站任务的文档（软删除期间不可检索，恢复后自动重新可见）
+  const valid = rows.filter((r) => {
+    const doc = r.documents?.[0] || r.documents || {};
+    const job = doc.jobs?.[0] || {};
+    return !job.deleted_at;
+  });
 
   // 按文档聚合并取最佳命中
   const byDoc = new Map();
-  for (const r of rows) {
+  for (const r of valid) {
     const doc = r.documents?.[0] || r.documents || {};
     if (!byDoc.has(r.doc_id)) {
       byDoc.set(r.doc_id, {

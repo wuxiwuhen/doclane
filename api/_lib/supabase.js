@@ -69,6 +69,12 @@ export const storage = {
     if (!res.ok) throw new Error(`storage read ${res.status}`);
     return Buffer.from(await res.arrayBuffer());
   },
+
+  // 按前缀批量删除（清空目录/文件残留；prefix 为桶内路径，如 "jobId/" 或 "userId/jobId.ext"）
+  removeByPrefix: async (bucket, prefix) => {
+    const r = await req('POST', `/storage/v1/object/${bucket}/remove`, { body: { prefixes: [prefix] } });
+    return r;
+  },
 };
 
 // 生成签名 URL 完整地址（供 302 重定向 / 下载）

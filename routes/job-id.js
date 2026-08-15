@@ -33,8 +33,8 @@ export default async function handler(req, res) {
     await db.update('jobs', 'id', job.id, {
       deleted_at: new Date().toISOString(), updated_at: new Date().toISOString(),
     });
-    // 移出知识库
-    try { await db.remove('documents', 'id', job.id); } catch { /* ignore */ }
+    // 知识库数据（documents/chunks/findings）保留：恢复即完整还原，无需重新解析；
+    // 软删除期间由 search/kb 过滤（join jobs.deleted_at）使其从检索中消失
     audit(user, 'delete_job', 'job', job.id, {});
     return res.json({ ok: true, trashed: true });
   }
