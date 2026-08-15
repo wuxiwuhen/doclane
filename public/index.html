@@ -71,15 +71,25 @@
 /* index.html — 按登录态渲染导航与 CTA：已登录直达工作台，不闪登录页 */
 (function () {
   const CFG = window.DSH_CONFIG || {};
-  const supabase = window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+  const LOCAL = !!CFG.LOCAL_MODE;
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const navUser = document.getElementById('nav-user');
+  const cta = document.getElementById('hero-cta');
+  const note = document.getElementById('hero-note');
+
+  // 本地模式：单用户免登录，直达工作台
+  if (LOCAL) {
+    navUser.innerHTML = '<a class="user-chip" href="/app.html"><span class="user-avatar">L</span><span class="user-mail">本地模式</span></a>';
+    cta.textContent = '进入工作台 →';
+    cta.href = '/app.html';
+    note.textContent = '本地数据 · Daytona 算力 · 无需账号';
+    return;
+  }
+  const supabase = window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
   if (!supabase) return;
 
   (async () => {
     const { data } = await supabase.auth.getSession();
-    const navUser = document.getElementById('nav-user');
-    const cta = document.getElementById('hero-cta');
-    const note = document.getElementById('hero-note');
     if (!data.session) return; // 未登录：保持默认「登录 + 立即体验」
 
     // 已登录：右上角用户 chip（首字符圆圈 + 邮箱 + admin 标记），CTA 直达工作台

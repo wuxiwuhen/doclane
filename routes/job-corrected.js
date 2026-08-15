@@ -1,6 +1,6 @@
 // GET /api/jobs/:id/corrected — 原始 + 修正覆盖层合成正文（前端渲染用）
 import { requireUser } from '../api/_lib/auth.js';
-import { db, storage } from '../api/_lib/supabase.js';
+import { db, storage } from '../api/_lib/store.js';
 
 function applyCorrections(md, corrections) {
   let out = md;

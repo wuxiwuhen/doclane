@@ -1,12 +1,18 @@
-// api/_lib/auth.js — JWT 校验（Supabase Auth REST，零依赖）
+// api/_lib/auth.js — JWT 校验（Supabase Auth REST，零依赖）；本地模式固定单用户
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, '') || '';
 const ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
+const LOCAL_MODE = process.env.DATA_BACKEND === 'local';
 
 /**
  * 校验 Bearer JWT，返回 { userId, email, role } 或 null。
  * 用 auth/v1/user 端点校验 token（服务端标准做法，无需 JWT secret）。
  */
 export async function verifyUser(authHeader) {
+  // 本地模式：单用户固定身份（admin），跳过 Auth
+  if (LOCAL_MODE) {
+    const { LOCAL_USER } = await import('./store-local.js');
+    return { userId: LOCAL_USER.userId, email: LOCAL_USER.email, role: LOCAL_USER.role };
+  }
   const token = (authHeader || '').replace(/^Bearer\s+/i, '').trim();
   if (!token || !SUPABASE_URL || !ANON_KEY) return null;
   try {
@@ -50,7 +56,7 @@ export async function requireAdmin(req) {
 /** 写审计日志（失败不阻断业务） */
 export async function audit(user, action, targetType, targetId, meta = {}) {
   try {
-    const { db } = await import('./supabase.js');
+    const { db } = await import('./store.js');
     await db.insert('audit_logs', [{
       user_id: user?.userId || null,
       action, target_type: targetType, target_id: targetId,

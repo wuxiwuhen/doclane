@@ -1,7 +1,7 @@
 // /api/jobs — POST 建任务（返回预签名上传 URL，浏览器直传 Storage）+ GET 任务列表
 import { randomUUID } from 'node:crypto';
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db, storage, configured } from '../api/_lib/supabase.js';
+import { db, storage, configured } from '../api/_lib/store.js';
 import { rowToJob, isSupported, extOf } from '../api/_lib/jobs.js';
 
 const MAX_UPLOAD_MB = Number(process.env.MAX_UPLOAD_MB || 10); // 单文件大小上限（防单用户耗尽额度）

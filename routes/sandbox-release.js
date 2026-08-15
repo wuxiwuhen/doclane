@@ -1,6 +1,6 @@
 // POST /api/sandbox/release — drain.py 结束回调：该用户无排队任务则销毁其沙箱（用完即毁）
 // 鉴权：X-Release-Secret 与 RELEASE_SECRET 比对（由 startDrain 注入沙箱环境变量）
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 import { sandboxNameFor, destroySandbox } from '../api/_lib/ensure.js';
 
 export default async function handler(req, res) {

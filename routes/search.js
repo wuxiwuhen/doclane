@@ -1,6 +1,6 @@
 // GET /api/search?q=&mode= — 知识库检索（关键词 pg_trgm；语义/混合降级）
 import { requireUser } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 import { toBigrams, highlightSnippet } from '../api/_lib/text.js';
 
 const EMBED_CONFIGURED = Boolean(process.env.EMBEDDING_API_KEY);

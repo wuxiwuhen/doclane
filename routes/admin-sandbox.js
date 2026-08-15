@@ -3,7 +3,7 @@
 import { DaytonaClient } from '../lib/daytona.js';
 import { sandboxNameFor, sandboxName, destroySandbox } from '../api/_lib/ensure.js';
 import { requireAdmin, audit } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'DELETE') return res.status(405).json({ error: 'method' });

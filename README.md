@@ -141,6 +141,24 @@ git push origin main             # 触发自动部署
 3. 等待解析完成（快照秒开 → MinerU 提取 → 自动入库），即可在「知识库」检索
 4. 管理员：在 Supabase SQL Editor 执行 `select public.promote_admin('你的邮箱');` 提升为管理员，即可看到「初始化 / 销毁沙箱 / 管理后台」入口
 
+### 💻 纯本地模式（只用 Daytona key，不依赖云部署）
+
+适合个人使用：数据（SQLite + 文件）留在本机，算力仍走 Daytona 云沙箱。
+
+```bash
+npm install
+# .env 里配置（本地模式仅需要这些）
+DAYTONA_API_Key=dtn_xxxxxxxx
+DATA_BACKEND=local          # 切换到本地数据后端
+# 可选：LOCAL_USER_EMAIL / LOCAL_USER_NAME（本地单用户身份）
+
+DATA_BACKEND=local node server-local.js   # http://127.0.0.1:3080
+```
+
+- 免登录（单用户即管理员），上传→解析→检索全链路在本地；数据存 `data/`
+- 首任务自动构建/复用 Daytona 快照（模型自带），之后秒开
+- 线上部署（云模式）与本地模式互不影响：路由层只认统一数据门面 `api/_lib/store.js`
+
 ---
 
 ## ⚙️ 环境变量

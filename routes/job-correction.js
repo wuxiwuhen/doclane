@@ -1,6 +1,6 @@
 // POST /api/jobs/:id/correction — 人工修正（记录修正层，不改写原始 md）
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);

@@ -25,7 +25,8 @@
 
   /* ---------- 认证（Supabase Auth）+ 带 token 的请求 ---------- */
   const CFG = window.DSH_CONFIG || {};
-  const supabase = window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
+  const LOCAL = !!CFG.LOCAL_MODE; // 本地模式：单用户、免登录、数据在本地
+  const supabase = !LOCAL && window.supabase ? window.supabase.createClient(CFG.SUPABASE_URL, CFG.SUPABASE_ANON_KEY) : null;
   let session = null;
   function authHeaders() {
     return session && session.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
@@ -34,8 +35,15 @@
     return fetch(url, { ...opts, headers: { ...authHeaders(), ...(opts.headers || {}) } });
   }
 
-  /* ---------- 启动：先认证，未登录跳转登录页 ---------- */
+  /* ---------- 启动：先认证，未登录跳转登录页（本地模式免登录直接进入） ---------- */
   (async function init() {
+    if (LOCAL) {
+      document.body.classList.remove('boot-pending');
+      const bs = document.getElementById('boot-screen');
+      if (bs) bs.remove();
+      bootApp();
+      return;
+    }
     if (!supabase) { flashToast('缺少 Supabase 配置'); return; }
     const { data } = await supabase.auth.getSession();
     session = data.session;
@@ -57,6 +65,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     const logout = document.getElementById('btn-logout');
     if (logout) logout.addEventListener('click', async () => {
+      if (LOCAL) { flashToast('本地模式无需登出'); return; }
       try { await supabase.auth.signOut(); } catch { /* ignore */ }
       location.replace('/login.html');
     });
@@ -108,11 +117,15 @@
 
   // 当前用户角色：admin 才显示「初始化/销毁沙箱」入口（任务流转走 /jobs/:id/ensure，与角色无关）
   async function loadUserRole() {
-    try {
-      if (!supabase || !session) return;
-      const { data } = await supabase.from('profiles').select('role').eq('user_id', session.user.id).single();
-      if (data && data.role) state.userRole = data.role;
-    } catch { /* 默认 user */ }
+    if (LOCAL) {
+      state.userRole = 'admin'; // 本地模式单用户即管理员
+    } else {
+      try {
+        if (!supabase || !session) return;
+        const { data } = await supabase.from('profiles').select('role').eq('user_id', session.user.id).single();
+        if (data && data.role) state.userRole = data.role;
+      } catch { /* 默认 user */ }
+    }
     // 状态栏显示当前角色（用户可确认自己是否为管理员）
     const wrap = document.getElementById('st-role-wrap');
     const el = document.getElementById('st-role');

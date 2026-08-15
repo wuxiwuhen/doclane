@@ -1,8 +1,8 @@
 // GET /api/jobs/:id/output/* — 产物访问（302 到 Storage 签名 URL）
 // 说明：<img>/<a> 等原生请求不带 Authorization 头，故此处不校验登录；
 // 任务 id 为不可猜的 UUID，且签名 URL 限时 1 小时，作为演示期安全边界。
-import { db } from '../api/_lib/supabase.js';
-import { signedUrl } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
+import { signedUrl } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   // 仅对未软删任务开放；rel 做基本路径清洗（防 .. 穿越签名路径）

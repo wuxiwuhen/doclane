@@ -1,6 +1,6 @@
 // POST /api/feedback — 提交用户反馈（登录用户）
 import { requireUser } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });

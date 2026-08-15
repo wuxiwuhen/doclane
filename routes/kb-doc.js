@@ -1,6 +1,6 @@
 // /api/kb/:id — GET 文档 / DELETE 删除（级联 chunks + 任务软删）
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);

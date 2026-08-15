@@ -165,8 +165,30 @@ def release_sandbox():
     except Exception:
         pass
 
+# ---------- 本地模式（纯本地模式：只做文件计算，不访问 Supabase） ----------
+def local_main(input_path, out_dir):
+    """本地模式：给定输入/输出路径，MinerU 提取后写产物清单 manifest.json。
+    日志走 stdout（由本地 server 收集写入任务日志）。"""
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    run_mineru(input_path, out, lambda m: print(m, flush=True))
+    files = sorted(p for p in out.rglob("*") if p.is_file() and p.name != "manifest.json")
+    manifest = [{"rel": p.relative_to(out).as_posix(), "size": p.stat().st_size} for p in files]
+    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    print("DONE", flush=True)
+
 # ---------- 主流程 ----------
 def main():
+    if len(sys.argv) > 2 and sys.argv[2] == "--local":
+        if len(sys.argv) < 5:
+            print("usage: python3 drain.py <job_id> --local <input_path> <output_dir>")
+            sys.exit(2)
+        try:
+            local_main(sys.argv[3], sys.argv[4])
+        except Exception as e:
+            print("ERROR:", e, file=sys.stderr, flush=True)
+            sys.exit(1)
+        return
     if not JOB_ID or not SUPABASE_URL or not SERVICE_KEY:
         print("usage: python3 drain.py <job_id>  (需要 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 环境变量)")
         sys.exit(2)

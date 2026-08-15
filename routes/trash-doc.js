@@ -1,6 +1,6 @@
 // DELETE /api/trash/:id — 彻底删除（回收站内）：删 DB 记录 + 清理 Storage 全部残留
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db, storage } from '../api/_lib/supabase.js';
+import { db, storage } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);

@@ -2,7 +2,7 @@
 // 普通用户可调用（仅限自己的任务）：任务 uploaded/queued 时前端轮询续拉，
 // 替代原先对 admin/init 的依赖（admin/init 已收紧为管理员专用）
 import { requireUser } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 import { ensure } from '../api/_lib/ensure.js';
 
 export default async function handler(req, res) {

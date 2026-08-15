@@ -1,6 +1,6 @@
 // GET /api/kb — 已入库文档浏览 + 统计
 import { requireUser } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   const { code, message } = await requireUser(req);

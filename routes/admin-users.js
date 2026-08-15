@@ -1,6 +1,6 @@
 // GET /api/admin/users — 注册用户列表 + 使用统计（仅 admin）
 import { requireAdmin } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 const ACTIVE_STATUS = ['queued', 'uploaded', 'preparing', 'running'];
 

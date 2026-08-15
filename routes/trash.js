@@ -1,6 +1,6 @@
 // /api/trash — GET 回收站列表 / POST clear 清空
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db, storage } from '../api/_lib/supabase.js';
+import { db, storage } from '../api/_lib/store.js';
 import { rowToJob } from '../api/_lib/jobs.js';
 
 export default async function handler(req, res) {

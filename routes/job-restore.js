@@ -1,6 +1,6 @@
 // POST /api/jobs/:id/restore — 从回收站恢复
 import { requireUser } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   const { user, code, message } = await requireUser(req);

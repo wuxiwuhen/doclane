@@ -1,7 +1,7 @@
 // GET /api/jobs/:id/original — 原始上传文件（302 到 Storage 签名 URL）
 // 同 output/*：原生请求不带 token，UUID 不可猜 + 签名限时，演示期安全边界。
-import { db } from '../api/_lib/supabase.js';
-import { signedUrl } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
+import { signedUrl } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   // 仅对未软删任务开放（回收站/已删除任务的原文件不再可下载）

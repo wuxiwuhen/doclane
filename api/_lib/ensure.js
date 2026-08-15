@@ -1,9 +1,14 @@
 // api/_lib/ensure.js — Daytona 按需沙箱拉起 + drain.py 注入（幂等，单次 <10s）
 // 设计：docs/architecture.md §4.3 —— 快照秒开，不留常驻进程
 // 多用户：每个用户从共享快照拉起独立沙箱（sandboxNameFor），用完即毁（release）
+// 本地模式（DATA_BACKEND=local）：复用 Daytona 算力，数据在本地（SQLite+文件），
+//   由本地 server 通过 toolbox 推输入/执行 drain.py --local/拉产物/入库
+import fs from 'node:fs';
+import path from 'node:path';
 import { DaytonaClient, DaytonaError } from '../../lib/daytona.js';
 import drainSource from './drain_source.js';
-import { db } from './supabase.js';
+import { db, storage } from './store.js';
+import { toBigrams } from './text.js';
 
 const SNAPSHOT_NAME = process.env.SNAPSHOT_NAME || 'mineru-snap-baked';
 const SANDBOX_NAME = process.env.SANDBOX_NAME || 'mineru-extractor-sandbox';
@@ -11,6 +16,8 @@ const SANDBOX_NAME = process.env.SANDBOX_NAME || 'mineru-extractor-sandbox';
 const AUTO_STOP_MINUTES = Number(process.env.AUTO_STOP_MINUTES || 60);
 // 沙箱寿命上限：即使释放逻辑失效，Daytona 侧也会在 TTL 到期后回收（防额度跑空）
 const SANDBOX_TTL_MIN = Number(process.env.SANDBOX_TTL_MIN || 180);
+const LOCAL_MODE = process.env.DATA_BACKEND === 'local';
+const DATA_DIR = process.env.DATA_DIR || path.join(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'data');
 
 export function snapshotName() { return SNAPSHOT_NAME; }
 export function sandboxName() { return SANDBOX_NAME; }
@@ -125,6 +132,7 @@ export async function destroySandbox(name) {
  *  可幂等续拉：任务已在 preparing/running 时跳过 startDrain，避免轮询重复启动；
  *  startDrain 成功后立即置 preparing，堵住轮询竞态窗口。 */
 export async function ensure(jobId) {
+  if (LOCAL_MODE) return ensureLocal(jobId);
   let job = null;
   try {
     const rows = await db.select('jobs', `id=eq.${jobId}&select=*&limit=1`);
@@ -162,4 +170,113 @@ export async function ensureAllUploaded() {
     if (e.ok && e.started) resumed++;
   }
   return resumed;
+}
+
+// ---------- 本地模式编排（数据在本地，算力在 Daytona） ----------
+function localOutputPath(jobId, rel) {
+  return path.join(DATA_DIR, 'outputs', jobId, String(rel || '').replace(/^\/+/, ''));
+}
+
+async function ensureLocal(jobId) {
+  let job = null;
+  try {
+    const rows = await db.select('jobs', `id=eq.${jobId}&select=*&limit=1`);
+    job = rows[0];
+  } catch (e) {
+    return { ok: false, error: String(e.message || e).slice(0, 200) };
+  }
+  if (!job) return { ok: false, error: '任务不存在' };
+
+  const fail = async (msg) => {
+    try {
+      await db.update('jobs', 'id', jobId, {
+        status: 'error', error: String(msg).slice(0, 500), updated_at: new Date().toISOString(),
+      });
+    } catch { /* 忽略 */ }
+    return { ok: true, started: true, error: String(msg).slice(0, 200) };
+  };
+
+  try {
+    const s = await ensureSandbox(job.owner_id);
+    if (!s.ok) return s;
+    if (s.building || s.warming) return s;
+
+    // 已在解析中则跳过（幂等）
+    try {
+      const st = await db.select('jobs', `id=eq.${jobId}&select=status`);
+      if (st[0] && ['preparing', 'running'].includes(st[0].status)) {
+        return { ok: true, started: true, message: '任务已在解析中' };
+      }
+    } catch { /* 忽略 */ }
+
+    const log = (msg) => ({ t: Date.now(), msg: String(msg).slice(0, 300) });
+    const oldLogs = Array.isArray(job.logs) ? job.logs : [];
+    await db.update('jobs', 'id', jobId, {
+      status: 'preparing', logs: oldLogs.concat(log('任务执行器已启动')),
+      updated_at: new Date().toISOString(),
+    });
+
+    const c = new DaytonaClient();
+    const sb = await c.getSandbox(sandboxNameFor(job.owner_id));
+    const tb = await c.toolbox(sb);
+
+    // 1) 注入 drain.py + 上传输入文件
+    await tb.uploadFile('/root/drain.py', Buffer.from(drainSource), 'drain.py');
+    const inputBuf = await storage.read('inputs', job.input_storage_path);
+    const inputPath = '/root/input' + (job.ext || '.bin');
+    await tb.uploadFile(inputPath, inputBuf, 'input' + (job.ext || '.bin'));
+
+    // 2) 执行（drain.py --local：纯文件计算；stdout 即日志）
+    const tmo = Math.min(40 * 60, Number(process.env.JOB_TIMEOUT_MIN || 30) * 60);
+    const r = await tb.exec(`python3 /root/drain.py ${jobId} --local ${inputPath} /root/out`, {}, tmo);
+    const outLines = String(r.result || '').split('\n').filter(Boolean);
+    const logs = oldLogs.concat(outLines.map(log));
+    if (r.exitCode !== 0) {
+      await db.update('jobs', 'id', jobId, {
+        status: 'error', error: outLines.slice(-2).join('\n').slice(0, 500), logs,
+        updated_at: new Date().toISOString(),
+      });
+      return { ok: true, started: true, error: '任务执行失败' };
+    }
+
+    // 3) 拉回产物（按 manifest.json）
+    const manifestRaw = await tb.downloadFile('/root/out/manifest.json').then((b) => b.toString('utf8'));
+    const manifest = JSON.parse(manifestRaw);
+    const saved = [];
+    let mainMd = null;
+    for (const m of manifest) {
+      const buf = await tb.downloadFile('/root/out/' + m.rel);
+      const abs = localOutputPath(jobId, m.rel);
+      fs.mkdirSync(path.dirname(abs), { recursive: true });
+      fs.writeFileSync(abs, buf);
+      const isMd = /\.md$/i.test(m.rel);
+      saved.push({ rel: m.rel, size: buf.length, isMd });
+      if (isMd && !mainMd) mainMd = m.rel;
+    }
+
+    // 4) 入库（documents + chunks，幂等先清旧）
+    if (mainMd) {
+      const md = fs.readFileSync(localOutputPath(jobId, mainMd), 'utf8');
+      const paras = String(md || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+      await db.remove('chunks', 'doc_id', jobId);
+      await db.remove('documents', 'id', jobId);
+      await db.insert('documents', [{
+        id: jobId, job_id: jobId, filename: job.original_name, ext: job.ext || '',
+        size: job.size || 0, main_md: md, created_at: new Date().toISOString(),
+      }], { select: 'id' });
+      for (let i = 0; i < paras.length; i++) {
+        await db.insert('chunks', [{ doc_id: jobId, seq: i, content: paras[i], content_bigrams: toBigrams(paras[i]) }], { select: 'id' });
+      }
+    }
+
+    await db.update('jobs', 'id', jobId, {
+      status: 'done', files: saved, main_md_path: mainMd, error: null,
+      quality: { level: 'ok' },
+      logs: logs.concat(log(`完成：${saved.length} 个产物`)),
+      updated_at: new Date().toISOString(),
+    });
+    return { ok: true, started: true };
+  } catch (e) {
+    return fail(e.message || e);
+  }
 }

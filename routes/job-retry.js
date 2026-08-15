@@ -1,6 +1,6 @@
 // POST /api/jobs/:id/retry — 重试：清旧产物重入队并触发 ensure
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 import { rowToJob } from '../api/_lib/jobs.js';
 import { ensure } from '../api/_lib/ensure.js';
 

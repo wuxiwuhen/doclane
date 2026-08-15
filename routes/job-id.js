@@ -1,6 +1,6 @@
 // /api/jobs/:id — GET 详情 / DELETE 软删除（移入回收站）
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 import { rowToJob } from '../api/_lib/jobs.js';
 
 async function loadOwnedJob(req, user) {

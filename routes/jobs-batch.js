@@ -1,6 +1,6 @@
 // POST /api/jobs/batch-action — 批量操作 delete/retry/cancel
 import { requireUser, audit } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 import { ensure } from '../api/_lib/ensure.js';
 
 export default async function handler(req, res) {

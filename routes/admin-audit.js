@@ -1,6 +1,6 @@
 // GET /api/admin/audit — 审计日志（admin）
 import { requireAdmin } from '../api/_lib/auth.js';
-import { db } from '../api/_lib/supabase.js';
+import { db } from '../api/_lib/store.js';
 
 export default async function handler(req, res) {
   const { code, message } = await requireAdmin(req);
