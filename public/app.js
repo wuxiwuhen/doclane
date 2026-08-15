@@ -113,6 +113,14 @@
       const { data } = await supabase.from('profiles').select('role').eq('user_id', session.user.id).single();
       if (data && data.role) state.userRole = data.role;
     } catch { /* 默认 user */ }
+    // 状态栏显示当前角色（用户可确认自己是否为管理员）
+    const wrap = document.getElementById('st-role-wrap');
+    const el = document.getElementById('st-role');
+    if (wrap && el) {
+      wrap.hidden = false;
+      el.textContent = state.userRole === 'admin' ? 'ADMIN' : 'USER';
+      el.style.color = state.userRole === 'admin' ? 'var(--accent-deep)' : '';
+    }
     refreshStatus(); // 按角色刷新按钮可见性
   }
 

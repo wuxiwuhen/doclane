@@ -509,6 +509,28 @@ body.landing { min-height: 100vh; display: flex; flex-direction: column; }
   display: flex; align-items: center; justify-content: space-between;
   padding: 22px 40px; border-bottom: 1px solid var(--line);
 }
+.nav-user { display: flex; align-items: center; }
+/* 已登录用户 chip：首字符圆圈 + 邮箱（+ ADMIN 标记） */
+.user-chip {
+  display: flex; align-items: center; gap: 9px;
+  padding: 5px 12px 5px 6px;
+  border: 1px solid var(--line-strong); background: var(--paper-card);
+  text-decoration: none; color: var(--ink);
+  transition: all .15s ease;
+}
+.user-chip:hover { border-color: var(--ink); transform: translateY(-1px); box-shadow: 2px 2px 0 var(--ink); }
+.user-avatar {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: var(--accent); color: var(--paper);
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 13px; font-weight: 600;
+}
+.user-mail { font-family: var(--mono); font-size: 11.5px; letter-spacing: .02em; color: var(--ink-soft); }
+.user-admin {
+  font-size: 9px; letter-spacing: .1em; color: var(--accent-deep);
+  border: 1px solid var(--accent); padding: 1px 5px; border-radius: 2px;
+  background: var(--accent-soft);
+}
 .landing-main { flex: 1; display: flex; flex-direction: column; }
 .hero { padding: 56px 40px 40px; text-align: center; }
 .hero-kicker { color: var(--accent-deep); letter-spacing: .18em; font-size: 11px; }
