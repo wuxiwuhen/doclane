@@ -295,6 +295,8 @@ async function ensureLocal(jobId) {
       return fail('无法启动任务执行器：' + (st.result || '').slice(0, 200));
     }
     await pushLog('已启动 MinerU 提取（后台运行中）…');
+    // 转入 running（与云模式一致：提取阶段显示"解析中"而非"准备中"）
+    await db.update('jobs', 'id', jobId, { status: 'running', updated_at: new Date().toISOString() });
 
     // 3) 轮询产物（manifest.json 出现 = 完成；run.log 出现 ERROR = 失败；总超时兜底）
     //    注意：python:3.11-slim 沙箱无 pgrep/ps，进程探测不可用，改为日志/产物探测

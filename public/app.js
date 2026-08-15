@@ -411,8 +411,8 @@
     if (job.status === 'queued') return '排队中';
     if (job.status === 'uploaded') return '待解析';
     if (job.status === 'preparing' || job.status === 'running') {
-      // 实时显示已运行时长（pollJob 每 2.2s 刷新）
-      const start = job.updatedAt || job.createdAt;
+      // 实时显示已运行时长（用创建时间计时，不因 updatedAt 更新而重置）
+      const start = job.createdAt || job.updatedAt;
       const sec = (Date.now() - start) / 1000;
       const label = job.status === 'preparing' ? '准备中' : '解析中';
       return label + ' · ' + fmtDur(sec);
