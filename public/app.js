@@ -794,13 +794,20 @@
         .katex-display { margin:12px 0; overflow-x:auto; }
         @media print { body { margin: 0; } .doc { padding: 0; } }
       `;
-      const w = window.open('', '_blank');
-      if (!w) { flashToast('浏览器拦截了新窗口，请允许弹窗后重试'); return; }
-      w.document.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>doclane</title><style>${katexCss}${printCss}</style></head><body><article class="doc">${mdHtml}</article><script>
-function readyPrint(){var imgs=[].slice.call(document.images);var p=imgs.map(function(i){return i.complete?Promise.resolve():new Promise(function(r){i.onload=i.onerror=r})});Promise.all(p).then(function(){setTimeout(function(){window.print()},200)})}
-if(document.readyState==='complete')readyPrint();else window.addEventListener('load',readyPrint);
-<\/script></body></html>`);
-      w.document.close();
+      const iframe = document.createElement('iframe');
+      iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:700px;border:0;';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument;
+      doc.open();
+      doc.write(`<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>doclane</title><style>${katexCss}${printCss}</style></head><body><article class="doc">${mdHtml}</article></body></html>`);
+      doc.close();
+      // 等图片加载完成再打印（避免缺图）
+      const imgs = [...doc.images];
+      await Promise.all(imgs.map((i) => (i.complete ? Promise.resolve() : new Promise((r) => { i.onload = i.onerror = r; }))));
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print(); // 同步阻塞，打印/取消后返回
+      iframe.remove();
+      flashToast('PDF 导出完成');
     } catch (err) {
       flashToast('导出失败：' + (err.message || '网络错误'));
     } finally {
