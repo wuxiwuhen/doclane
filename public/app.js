@@ -767,9 +767,12 @@
     const old = btn.textContent;
     btn.textContent = '生成中…';
     try {
-      // KaTeX 样式（同源拉取，保证公式渲染）
+      // KaTeX 样式（同源拉取，保证公式渲染；字体路径改绝对——iframe 内相对路径会错位）
       let katexCss = '';
-      try { katexCss = await fetch('/vendor/katex/katex.min.css').then((r) => r.text()); } catch { /* 无则跳过 */ }
+      try {
+        katexCss = await fetch('/vendor/katex/katex.min.css').then((r) => r.text());
+        katexCss = katexCss.replace(/url\(fonts\//g, 'url(/vendor/katex/fonts/');
+      } catch { /* 无则跳过 */ }
       const printCss = `
         body { font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",Georgia,serif; color:#222; font-size:13px; line-height:1.75; margin:0; }
         .doc { max-width: 760px; margin: 0 auto; padding: 32px; }
