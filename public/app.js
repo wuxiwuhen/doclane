@@ -81,9 +81,8 @@
       if (running.length) { selectJob(running[0].id); running.forEach((j) => pollJob(j.id)); }
     }).catch(() => {});
     // 轮询主体抽成函数：定时触发 + 切回页面立即触发（后台 tab 的 setInterval 会被浏览器节流）
+    // 注意：总是拉取列表（即使当前无 busy 任务），保证初始加载失败后能自愈
     const pollOnce = () => {
-      const busy = [...state.jobs.values()].some((j) => ['queued', 'uploaded', 'preparing', 'running'].includes(j.status));
-      if (!busy) return;
       apiFetch('/api/jobs').then((r) => r.json()).then(({ jobs: list }) => {
         let changed = false;
         for (const j of list) {
@@ -1081,12 +1080,15 @@
 
   // 统一刷新：流水线 + 回收站
   async function refreshAllLists() {
-    const [a, t] = await Promise.all([
-      apiFetch('/api/jobs').then((r) => r.json()).catch(() => ({ jobs: [] })),
-      apiFetch('/api/trash').then((r) => r.json()).catch(() => ({ jobs: [] })),
+    // allSettled：单个接口失败不拖累其他列表（避免 jobs 因 trash 失败而丢失）
+    const [a, t] = await Promise.allSettled([
+      apiFetch('/api/jobs').then((r) => r.json()),
+      apiFetch('/api/trash').then((r) => r.json()),
     ]);
-    state.jobs = new Map((a.jobs || []).map((j) => [j.id, j]));
-    state.trashJobs = new Map((t.jobs || []).map((j) => [j.id, j]));
+    const aVal = a.status === 'fulfilled' ? (a.value?.jobs || []) : [];
+    const tVal = t.status === 'fulfilled' ? (t.value?.jobs || []) : [];
+    state.jobs = new Map(aVal.map((j) => [j.id, j]));
+    state.trashJobs = new Map(tVal.map((j) => [j.id, j]));
     renderJobList();
   }
 
