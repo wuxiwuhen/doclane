@@ -27,3 +27,7 @@ dist/
 .cli/
 tools/
 .gh/
+
+# 本地调试凭据转存（含密钥，绝不入库）
+scripts/creds-local.json
+scripts/creds-test.json
