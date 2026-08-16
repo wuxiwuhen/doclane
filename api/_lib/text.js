@@ -1,4 +1,4 @@
-// api/_lib/text.js — 文本处理（移植自 lib/knowledge.js，供检索/高亮）
+// api/_lib/text.js — 文本处理（检索侧高亮/查询词 bigram；入库侧切段与 bigram 一律以 runner/drain.py 为准）
 
 /** 中文 bigram 切分：连续中文按 2 字符滑动窗口，非中文保留为词 */
 export function toBigrams(text) {

@@ -8,7 +8,6 @@ import path from 'node:path';
 import { DaytonaClient, DaytonaError, sleep } from '../../lib/daytona.js';
 import drainSource from './drain_source.js';
 import { db, storage } from './store.js';
-import { toBigrams } from './text.js';
 
 const SNAPSHOT_NAME = process.env.SNAPSHOT_NAME || 'mineru-snap-baked';
 const SANDBOX_NAME = process.env.SANDBOX_NAME || 'mineru-extractor-sandbox';
@@ -130,15 +129,15 @@ export async function startDrain(jobId, userId) {
   const env = [
     `SUPABASE_URL=${process.env.SUPABASE_URL}`,
     `SUPABASE_SERVICE_ROLE_KEY=${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-    process.env.EMBEDDING_API_KEY ? `EMBEDDING_API_KEY=${process.env.EMBEDDING_API_KEY}` : '',
-    process.env.EMBEDDING_BASE_URL ? `EMBEDDING_BASE_URL=${process.env.EMBEDDING_BASE_URL}` : '',
-    `EMBEDDING_MODEL=${process.env.EMBEDDING_MODEL || 'text-embedding-3-small'}`,
     process.env.APP_URL ? `APP_URL=${process.env.APP_URL}` : '',
     process.env.RELEASE_SECRET ? `RELEASE_SECRET=${process.env.RELEASE_SECRET}` : '',
     process.env.JOB_TIMEOUT_MIN ? `JOB_TIMEOUT_MIN=${process.env.JOB_TIMEOUT_MIN}` : '',
   ].filter(Boolean).join(' ');
-  const script = `${env} setsid nohup python3 /root/drain.py ${jobId} >/tmp/drain-${jobId}.log 2>&1 < /dev/null & echo STARTED`;
-  await tb.uploadFile('/root/drain.py', Buffer.from(drainSource), 'drain.py');
+  // 与本地模式一致：/tmp 下按任务隔离（沙箱内用户非 root，/root 无写权限）；
+  // 后台启动用「子 shell」写法 `( setsid nohup … & )`，规避 process/execute 30s 硬上限
+  const W = '/tmp/doclane-' + jobId;
+  await tb.uploadFile(W + '/drain.py', Buffer.from(drainSource), 'drain.py');
+  const script = `${env} mkdir -p ${W} && ( setsid nohup python3 ${W}/drain.py ${jobId} >${W}/run.log 2>&1 < /dev/null & ) ; echo STARTED`;
   const r = await tb.exec(script, {}, 20);
   if (!/STARTED/.test(r.result || '')) {
     throw new Error('无法启动 drain.py：' + (r.result || '').slice(0, 200));
@@ -208,11 +207,12 @@ function localOutputPath(jobId, rel) {
   return path.join(DATA_DIR, 'outputs', jobId, String(rel || '').replace(/^\/+/, ''));
 }
 
-// 用完即毁：该用户无排队/待解析任务则销毁沙箱（与云模式 release 一致）
-async function releaseLocalSandbox(ownerId, currentJobId) {
+// 用完即毁（本地/云端共用）：该用户无排队/待解析任务则销毁其沙箱。
+// 本地 ensureLocal 与云端 routes/sandbox-release.js 都走这一份。
+export async function releaseIfIdle(ownerId, currentJobId) {
   try {
     const pending = await db.select('jobs',
-      `owner_id=eq.${ownerId}&status=in.(queued,uploaded)&select=id&limit=5`);
+      `owner_id=eq.${ownerId}&status=in.(queued,uploaded,preparing,running)&select=id&limit=5`);
     const hasNext = (pending || []).some((j) => j.id !== currentJobId);
     if (!hasNext) {
       await destroySandbox(sandboxNameFor(ownerId));
@@ -252,7 +252,7 @@ async function ensureLocal(jobId) {
       });
     } catch { /* 忽略 */ }
     // 失败同样用完即毁（无排队任务则销毁沙箱）
-    try { await releaseLocalSandbox(job.owner_id, jobId); } catch { /* 忽略 */ }
+    try { await releaseIfIdle(job.owner_id, jobId); } catch { /* 忽略 */ }
     return { ok: true, started: true, error: String(msg).slice(0, 200) };
   };
 
@@ -314,18 +314,19 @@ async function ensureLocal(jobId) {
     // 转入 running（与云模式一致：提取阶段显示"解析中"而非"准备中"）
     await db.update('jobs', 'id', jobId, { status: 'running', updated_at: new Date().toISOString() });
 
-    // 3) 轮询产物（manifest.json 出现 = 完成；run.log 出现 ERROR = 失败；总超时兜底）
+    // 3) 轮询 ingest.json（drain.py 在「产物收集 + 切段」完成后最后写入 = 完成信号；
+    //    run.log 出现 ERROR = 失败；总超时兜底）
     //    注意：python:3.11-slim 沙箱无 pgrep/ps，进程探测不可用，改为日志/产物探测
     const deadline = Date.now() + tmo * 1000;
-    let manifest = null;
+    let ingest = null;
     let lastErr = '';
     let pollCount = 0;
     while (Date.now() < deadline) {
       await sleep(10000);
       pollCount++;
-      // 尝试拉 manifest（出现 = 完成）
+      // 尝试拉 ingest（出现 = 完成）
       try {
-        manifest = JSON.parse(await tb.downloadFile(W + '/out/manifest.json').then((b) => b.toString('utf8')));
+        ingest = JSON.parse(await tb.downloadFile(W + '/out/ingest.json').then((b) => b.toString('utf8')));
         break;
       } catch { /* 还没完成 */ }
       // 每 3 轮（30s）写一次进度 + 检测 run.log 的 ERROR（drain.py 失败会 print "ERROR:" 到 stderr）
@@ -338,7 +339,7 @@ async function ensureLocal(jobId) {
         } catch { /* 日志暂不可读 */ }
       }
     }
-    if (!manifest) {
+    if (!ingest) {
       const detail = (lastErr || '任务超时（' + Math.round(tmo / 60) + ' 分钟）').slice(-800);
       return fail(detail);
     }
@@ -352,46 +353,39 @@ async function ensureLocal(jobId) {
       }
     } catch { /* 查询失败不阻塞 */ }
 
-    // 4) 拉回产物（按 manifest.json）
+    // 4) 拉回产物（按 ingest.manifest；切段/bigram 已在 drain.py 内算好，与云端同一实现）
+    const manifest = Array.isArray(ingest.manifest) ? ingest.manifest : [];
     await pushLog(`提取完成，拉取产物（${manifest.length} 个）…`);
     const saved = [];
-    let mainMd = null;
     for (const m of manifest) {
       const buf = await tb.downloadFile(W + '/out/' + m.rel);
       const abs = localOutputPath(jobId, m.rel);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, buf);
-      const isMd = /\.md$/i.test(m.rel);
-      saved.push({ rel: m.rel, size: buf.length, isMd });
-      if (isMd && !mainMd) mainMd = m.rel;
+      saved.push({ rel: m.rel, size: buf.length, isMd: !!m.isMd });
     }
 
-    // 5) 入库（documents + chunks，幂等先清旧）
-    let paraCount = 0;
-    if (mainMd) {
-      const md = fs.readFileSync(localOutputPath(jobId, mainMd), 'utf8');
-      const paras = String(md || '').split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
-      paraCount = paras.length;
-      await pushLog(`入库知识库（${paras.length} 个检索片段）…`);
-      await db.remove('chunks', 'doc_id', jobId);
-      await db.remove('documents', 'id', jobId);
-      await db.insert('documents', [{
-        id: jobId, job_id: jobId, filename: job.original_name, ext: job.ext || '',
-        size: job.size || 0, main_md: md, created_at: new Date().toISOString(),
-      }], { select: 'id' });
-      for (let i = 0; i < paras.length; i++) {
-        await db.insert('chunks', [{ doc_id: jobId, seq: i, content: paras[i], content_bigrams: toBigrams(paras[i]) }], { select: 'id' });
-      }
+    // 5) 入库（documents + chunks，幂等先清旧；数据直接来自 ingest.json）
+    const chunks = Array.isArray(ingest.chunks) ? ingest.chunks : [];
+    await pushLog(`入库知识库（${chunks.length} 个检索片段）…`);
+    await db.remove('chunks', 'doc_id', jobId);
+    await db.remove('documents', 'id', jobId);
+    await db.insert('documents', [{
+      id: jobId, job_id: jobId, filename: job.original_name, ext: job.ext || '',
+      size: job.size || 0, main_md: ingest.main_md_text || '', created_at: new Date().toISOString(),
+    }], { select: 'id' });
+    for (const c of chunks) {
+      await db.insert('chunks', [{ doc_id: jobId, seq: c.seq, content: c.content, content_bigrams: c.bigrams }], { select: 'id' });
     }
 
-    await pushLog(`完成：${saved.length} 个产物，${paraCount} 个检索片段`);
+    await pushLog(`完成：${saved.length} 个产物，${chunks.length} 个检索片段`);
     await db.update('jobs', 'id', jobId, {
-      status: 'done', files: saved, main_md_path: mainMd, error: null,
+      status: 'done', files: saved, main_md_path: ingest.main_md || null, error: null,
       quality: { level: 'ok' }, logs,
       updated_at: new Date().toISOString(),
     });
-    // 用完即毁：无排队任务则销毁沙箱（本地模式）
-    await releaseLocalSandbox(job.owner_id, jobId);
+    // 用完即毁：无排队任务则销毁沙箱（与云端 release 共用 releaseIfIdle）
+    await releaseIfIdle(job.owner_id, jobId);
     return { ok: true, started: true };
   } catch (e) {
     return fail(e.message || e);

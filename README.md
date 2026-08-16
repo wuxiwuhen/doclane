@@ -89,7 +89,7 @@ Dockerfile（安装 MinerU + 下载 2.5GB 模型） ──构建──▶ 快照
 |----|------|------|
 | 前端 | Vanilla JS + KaTeX + marked | 零框架、零构建，Vercel 静态托管 |
 | API | Vercel Serverless Functions（Node 20） | 无状态轻函数，单一入口路由分发 |
-| 数据库 | Supabase Postgres（pgvector + pg_trgm） | 关系数据 + 向量检索 + 全文检索 + RLS |
+| 数据库 | Supabase Postgres（pg_trgm） | 关系数据 + 中文关键词全文检索 + RLS |
 | 认证 | Supabase Auth | 邮箱密码登录，JWT 会话 |
 | 存储 | Supabase Storage | 私有桶 + 预签名 URL 直传/下载 |
 | 计算 | Daytona 云沙箱（快照模式） | MinerU 3.x + 烘焙模型，按需秒开 |
@@ -179,9 +179,6 @@ DATA_BACKEND=local node server-local.js   # http://127.0.0.1:3088
 | `AUTO_STOP_MINUTES` | `60` | 沙箱空闲停机（分钟） |
 | `MAX_ACTIVE_JOBS` | `5` | 每用户活跃任务上限 |
 | `MAX_JOBS_PER_HOUR` | `20` | 每用户每小时创建上限 |
-| `EMBEDDING_API_KEY` | — | 语义检索 Embedding key（OpenAI 兼容，可选） |
-| `EMBEDDING_BASE_URL` | `https://api.openai.com/v1` | Embedding 服务地址 |
-| `EMBEDDING_MODEL` | `text-embedding-3-small` | Embedding 模型（须 1536 维） |
 
 ---
 
@@ -199,7 +196,7 @@ DATA_BACKEND=local node server-local.js   # http://127.0.0.1:3088
 | `/api/jobs/:id/log` | GET | 属主 | 运行日志 |
 | `/api/jobs/:id/output/*` | GET | 未软删任务 | 产物访问（302 签名 URL） |
 | `/api/kb` | GET | 登录 | 知识库文档列表 |
-| `/api/search?q=&mode=` | GET | 登录 | 检索（keyword / semantic / hybrid） |
+| `/api/search?q=` | GET | 登录 | 知识库检索（关键词；语义/混合未来版本） |
 | `/api/feedback` | POST | 登录 | 提交反馈 |
 | `/api/admin/users` | GET | admin | 用户列表 + 使用统计 |
 | `/api/admin/feedback` | GET | admin | 反馈列表 |
@@ -240,7 +237,7 @@ DATA_BACKEND=local node server-local.js   # http://127.0.0.1:3088
 - [x] 每用户独立沙箱 + 用完即毁
 - [x] 中文关键词检索（bigram + pg_trgm）
 - [x] 管理员后台 + 用户反馈
-- [ ] 语义/混合检索完整链路（向量入库 + pgvector RPC + RRF 融合）
+- [ ] 语义/混合检索（未来版本：向量入库 + RRF 融合，当前仅关键词）
 - [ ] 合规治理（敏感信息识别 / 脱敏 / 报告导出）
 - [ ] Markdown 正文人工修正与版本记录
 - [ ] 导出 PDF（KaTeX 渲染）

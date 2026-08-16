@@ -653,10 +653,9 @@
     $('#d-meta').textContent = meta.join(' · ');
     $('#tab-files-count').textContent = (job.files || []).length ? ` ${job.files.length}` : '';
 
-    // 导出 PDF：服务端保真渲染（本地用系统 Chrome，Vercel 用无服务器 Chromium）
+    // 导出 PDF：浏览器打印（隐藏 iframe，与正文显示一致；点击由下方监听拦截）
     const dlBtn = $('#btn-download-md');
     dlBtn.hidden = !(job.status === 'done' && job.mainMd);
-    if (job.status === 'done' && job.mainMd) dlBtn.href = `/api/jobs/${job.id}/export-pdf`;
 
     const mdView = $('#md-view');
     const mdEmpty = $('#md-empty');
@@ -774,28 +773,34 @@
         katexCss = katexCss.replace(/url\(fonts\//g, 'url(/vendor/katex/fonts/');
       } catch { /* 无则跳过 */ }
       const printCss = `
-        body { font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",Georgia,serif; color:#222; font-size:13px; line-height:1.75; margin:0; }
-        .doc { max-width: 760px; margin: 0 auto; padding: 32px; }
-        h1,h2,h3,h4 { font-weight:700; line-height:1.3; }
-        h1 { font-size:26px; border-bottom:2px solid #333; padding-bottom:8px; margin:0 0 16px; }
-        h2 { font-size:20px; margin-top:26px; }
-        h3 { font-size:16px; margin-top:20px; }
-        p { margin:10px 0; }
-        ul,ol { margin:10px 0; padding-left:26px; }
-        li { margin:4px 0; }
-        table { border-collapse:collapse; width:100%; margin:14px 0; font-size:12px; }
-        th,td { border:1px solid #b8b2a4; padding:6px 10px; text-align:left; }
-        th { background:#f2efe8; }
-        img { max-width:100%; }
-        pre { background:#f6f4ee; padding:12px 14px; overflow-x:auto; font-size:11px; line-height:1.6; white-space:pre-wrap; }
-        code { background:#f2efe8; padding:1px 4px; font-size:12px; }
-        pre code { background:none; padding:0; }
-        blockquote { border-left:3px solid #c8402a; margin:12px 0; padding:6px 14px; color:#555; font-style:italic; }
-        a { color:#9f2f1d; }
-        hr { border:none; border-top:1px solid #ccc; margin:22px 0; }
-        .katex { font-size:1.05em; }
-        .katex-display { margin:12px 0; overflow-x:auto; }
-        @media print { body { margin: 0; } .doc { padding: 0; } }
+        @page { size: A4; margin: 14mm 12mm; }
+        * { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        body {
+          font-family: "PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC","Source Han Sans SC",Georgia,serif;
+          color: #222; font-size: 12.5px; line-height: 1.7;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
+        .doc { width: 100%; max-width: 100%; padding: 0; }
+        h1,h2,h3,h4 { font-weight: 700; line-height: 1.3; page-break-after: avoid; break-after: avoid; }
+        h1 { font-size: 24px; border-bottom: 2px solid #333; padding-bottom: 8px; margin: 0 0 14px; }
+        h2 { font-size: 19px; margin-top: 24px; }
+        h3 { font-size: 15px; margin-top: 18px; }
+        p { margin: 8px 0; overflow-wrap: break-word; word-wrap: break-word; }
+        ul, ol { margin: 8px 0; padding-left: 24px; }
+        li { margin: 3px 0; overflow-wrap: break-word; word-wrap: break-word; }
+        table { border-collapse: collapse; width: 100%; table-layout: fixed; margin: 12px 0; font-size: 11.5px; }
+        th, td { border: 1px solid #b8b2a4; padding: 5px 8px; text-align: left; overflow-wrap: anywhere; word-wrap: break-word; }
+        th { background: #f2efe8; }
+        img { max-width: 100%; page-break-inside: avoid; break-inside: avoid; }
+        pre { background: #f6f4ee; padding: 10px 12px; font-size: 10.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; word-wrap: break-word; page-break-inside: avoid; break-inside: avoid; }
+        code { background: #f2efe8; padding: 1px 4px; font-size: 11.5px; overflow-wrap: anywhere; }
+        pre code { background: none; padding: 0; }
+        blockquote { border-left: 3px solid #c8402a; margin: 10px 0; padding: 4px 12px; color: #555; font-style: italic; page-break-inside: avoid; break-inside: avoid; }
+        a { color: #9f2f1d; }
+        hr { border: none; border-top: 1px solid #ccc; margin: 20px 0; }
+        .katex { font-size: 1.02em; max-width: 100%; }
+        .katex-display { margin: 10px 0; max-width: 100%; overflow-x: visible; page-break-inside: avoid; break-inside: avoid; }
       `;
       const iframe = document.createElement('iframe');
       iframe.style.cssText = 'position:fixed;left:-9999px;top:0;width:900px;height:700px;border:0;';
@@ -807,6 +812,13 @@
       // 等图片加载完成再打印（避免缺图）
       const imgs = [...doc.images];
       await Promise.all(imgs.map((i) => (i.complete ? Promise.resolve() : new Promise((r) => { i.onload = i.onerror = r; }))));
+      // 等 KaTeX 字体就绪再打印：公式依赖 KaTeX 私有区码位，字体未加载会整段空白。
+      // 离屏 iframe 里字体是懒加载的，显式 load 各字体族 + 等 ready，超时兜底防卡死。
+      if (doc.fonts && doc.fonts.ready && doc.fonts.load) {
+        const families = ['KaTeX_Main', 'KaTeX_Math', 'KaTeX_AMS', 'KaTeX_Caligraphic', 'KaTeX_Fraktur', 'KaTeX_SansSerif', 'KaTeX_Script', 'KaTeX_Typewriter', 'KaTeX_Size1', 'KaTeX_Size2', 'KaTeX_Size3', 'KaTeX_Size4'];
+        const loads = families.map((f) => doc.fonts.load(`10px "${f}"`).catch(() => {}));
+        await Promise.race([Promise.all(loads).then(() => doc.fonts.ready), new Promise((r) => setTimeout(r, 4000))]);
+      }
       iframe.contentWindow.focus();
       iframe.contentWindow.print(); // 同步阻塞，打印/取消后返回
       iframe.remove();
@@ -870,37 +882,24 @@
     } catch { /* noop */ }
   }
 
-  let kbMode = 'hybrid'; // hybrid | keyword | semantic
-  document.querySelectorAll('.km').forEach((b) => {
-    b.addEventListener('click', () => {
-      kbMode = b.dataset.mode;
-      document.querySelectorAll('.km').forEach((x) => x.classList.toggle('active', x === b));
-      doSearch($('#kb-input').value.trim());
-    });
-  });
-
+  // 知识库检索：当前仅关键词（中文 bigram），语义/混合检索未来版本升级
   async function doSearch(q) {
     if (!q) {
       $('#kb-results').hidden = true;
       $('#kb-browse').hidden = false;
       return;
     }
-    const { total, hits, mode, semanticEnabled, degraded, error } =
-      await apiFetch(`/api/search?q=${encodeURIComponent(q)}&mode=${kbMode}`).then((r) => r.json());
+    const { total, hits } = await apiFetch(`/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json());
     $('#kb-browse').hidden = true;
     const res = $('#kb-results');
     res.hidden = false;
-    const modeLabel = { hybrid: '混合', keyword: '关键词', semantic: '语义' }[mode] || mode;
     if (!hits.length) {
       res.innerHTML = `<div class="empty-state"><p>未找到与「${esc(q)}」相关的内容</p>
-        ${degraded ? `<p class="empty-sub">${esc(error || '当前为关键词检索；配置 EMBEDDING_API_KEY 后可启用语义检索')}</p>` : ''}</div>`;
+        <p class="empty-sub">语义 / 混合检索将在未来版本提供，当前为关键词结果</p></div>`;
       return;
     }
     const docCount = new Set(hits.map((h) => h.docId)).size;
-    const modeNote = degraded
-      ? `<span class="kb-mode-note warn">· 语义未启用，当前为关键词结果</span>`
-      : mode === 'semantic' && !semanticEnabled ? '' : '';
-    res.innerHTML = `<div class="kb-result-head">[${modeLabel}] 命中 ${total} 条，来自 ${docCount} 份文档 ${modeNote}</div>` +
+    res.innerHTML = `<div class="kb-result-head">[关键词] 命中 ${total} 条，来自 ${docCount} 份文档</div>` +
       hits.map((h) => `
         <div class="kb-hit" data-doc="${esc(h.docId)}">
           <div class="kb-hit-top">

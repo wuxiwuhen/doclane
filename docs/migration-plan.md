@@ -3,6 +3,8 @@
 > 目标：把当前「单机 Express + SQLite + 本地文件」改造为「Vercel 托管前端/API + Supabase 数据/认证/存储 + Daytona 云端计算 + GitHub 协作部署」的可上线产品，并落地合规主线（敏感识别 + 合规报告 + 审计日志）。
 > 面向：个人项目上线，供面试官 / 感兴趣的人在线体验。
 >
+> ⚠️ **2026-08 修订**：语义/向量检索（pgvector / embedding）已下线，检索仅保留关键词（pg_trgm + bigram）；旧 `server.js` + `lib/extractor.js`/`lib/knowledge.js`/`lib/embedding.js` 等一代代码已退役。本文档保留历史设计，标记处作未来升级参考。
+>
 > 计算形态（2026-08 修订）：**Daytona 按需沙箱 + 一次性任务执行器（drain.js）**，不留常驻 worker。
 > 原因：Daytona 按秒计费（vCPU $0.0504/h、内存 $0.0162/GiB/h、存储 $0.000108/GiB/h，前 5GB 存储免费，新户含 $200 算力额度），
 > 常驻轮询进程 = 24/7 空转一台 4G 机器（≈$120/月），且 worker 生命周期被沙箱 TTL/自动停机/销毁操作反复打断；

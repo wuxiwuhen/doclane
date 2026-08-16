@@ -3,7 +3,7 @@
 -- 应用方式：supabase db push（需先 supabase link 到项目）
 
 -- ========== 扩展 ==========
-create extension if not exists vector with schema extensions;
+-- 仅关键词检索（pg_trgm）；语义/向量检索未来版本再引入
 create extension if not exists pg_trgm with schema extensions;
 
 
@@ -50,12 +50,10 @@ create table if not exists public.chunks (
   doc_id          uuid not null references public.documents(id) on delete cascade,
   seq             int not null,
   content         text not null,
-  content_bigrams text,                 -- 关键词检索（中文 bigram 预处理，pg_trgm）
-  embedding       vector(1536)          -- 语义检索（可选，未配 key 时为空）
+  content_bigrams text                 -- 关键词检索（中文 bigram 预处理，pg_trgm）
 );
 create index if not exists idx_chunks_doc on public.chunks (doc_id, seq);
 create index if not exists idx_chunks_bigrams on public.chunks using gin (content_bigrams gin_trgm_ops);
-create index if not exists idx_chunks_embedding on public.chunks using hnsw (embedding vector_cosine_ops);
 
 create table if not exists public.audit_logs (
   id          bigint generated always as identity primary key,

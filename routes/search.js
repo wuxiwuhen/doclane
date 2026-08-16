@@ -1,24 +1,22 @@
-// GET /api/search?q=&mode= — 知识库检索（关键词 pg_trgm；语义/混合降级）
+// GET /api/search?q= — 知识库检索（仅关键词：中文 bigram + pg_trgm / 本地 LIKE）
+// 语义/混合检索暂未实现（未来版本升级）；mode 参数保留兼容，但一律按关键词处理。
 import { requireUser } from '../api/_lib/auth.js';
 import { db } from '../api/_lib/store.js';
 import { toBigrams, highlightSnippet } from '../api/_lib/text.js';
-
-const EMBED_CONFIGURED = Boolean(process.env.EMBEDDING_API_KEY);
 
 export default async function handler(req, res) {
   const { code, message } = await requireUser(req);
   if (code) return res.status(code).json({ error: message });
 
   const q = String(req.query.q || '').trim();
-  const mode = ['keyword', 'semantic', 'hybrid'].includes(req.query.mode) ? req.query.mode : 'hybrid';
+  const asked = req.query.mode === 'semantic' || req.query.mode === 'hybrid' ? req.query.mode : null;
   if (!q) {
-    return res.json({ query: '', total: 0, hits: [], mode, semanticEnabled: EMBED_CONFIGURED });
+    return res.json({ query: '', total: 0, hits: [], mode: 'keyword', semanticEnabled: false });
   }
 
-  // v1：语义/混合在未配置 embedding 时降级为关键词；配置了也暂按关键词（向量查询后续版本接入 rpc）
   const bigrams = toBigrams(q);
   if (!bigrams) {
-    return res.json({ query: q, total: 0, hits: [], mode, semanticEnabled: EMBED_CONFIGURED });
+    return res.json({ query: q, total: 0, hits: [], mode: 'keyword', semanticEnabled: false });
   }
   const encoded = encodeURIComponent(`*${bigrams}*`);
   const rows = await db.select('chunks',
@@ -45,9 +43,8 @@ export default async function handler(req, res) {
   }
   const hits = [...byDoc.values()];
   res.json({
-    query: q, total: hits.length, hits, mode,
-    semanticEnabled: EMBED_CONFIGURED,
-    degraded: mode !== 'keyword' && !EMBED_CONFIGURED,
-    error: mode === 'semantic' && !EMBED_CONFIGURED ? '未配置 Embedding API（.env 设置 EMBEDDING_API_KEY）' : undefined,
+    query: q, total: hits.length, hits, mode: 'keyword', semanticEnabled: false,
+    // 请求了未上线的语义/混合时提示未来升级
+    upgrade: asked ? '语义 / 混合检索将在未来版本提供，当前为关键词结果' : undefined,
   });
 }

@@ -273,14 +273,10 @@ a { color: inherit; text-decoration: none; }
 }
 #kb-input:focus { border-color: var(--accent); box-shadow: 2px 2px 0 var(--ink); }
 .kb-mode { display: flex; border: 1px solid var(--line-strong); flex: none; }
-.km {
+.kb-mode-hint {
   font-family: var(--mono); font-size: 10.5px; letter-spacing: .06em;
-  padding: 8px 12px; background: transparent; border: none; cursor: pointer;
-  color: var(--ink-soft); transition: all .15s;
+  padding: 8px 12px; color: var(--ink-soft); white-space: nowrap;
 }
-.km + .km { border-left: 1px solid var(--line-strong); }
-.km:hover { color: var(--ink); }
-.km.active { background: var(--ink); color: var(--paper); }
 
 .kb-content { flex: 1; overflow-y: auto; padding: 24px 40px 50px; }
 .kb-browse-title { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; color: var(--ink-faint); border-bottom: 1px solid var(--line); padding-bottom: 8px; margin-bottom: 12px; }

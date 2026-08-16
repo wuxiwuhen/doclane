@@ -19,9 +19,6 @@ from pathlib import Path
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-EMBED_BASE = (os.environ.get("EMBEDDING_BASE_URL") or "").rstrip("/")
-EMBED_KEY = os.environ.get("EMBEDDING_API_KEY", "")
-EMBED_MODEL = os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
 JOB_ID = sys.argv[1] if len(sys.argv) > 1 else ""
 APP_URL = (os.environ.get("APP_URL") or "").rstrip("/")     # 任务结束回调（释放沙箱）
 RELEASE_SECRET = os.environ.get("RELEASE_SECRET", "")
@@ -85,7 +82,8 @@ def storage_put(path, data, ctype="application/octet-stream"):
     with urllib.request.urlopen(req, timeout=300) as r:
         return r.status
 
-# ---------- 文本处理（与 lib/knowledge.js 一致） ----------
+# ---------- 文本处理（唯一实现：切段 + 中文 bigram；本地/云端共用） ----------
+# JS 侧 api/_lib/text.js 仅保留检索时的高亮，切段/入库 bigram 一律以本文件为准。
 CJK_RE = re.compile(r"[\u4e00-\u9fff]+")
 
 def to_bigrams(text):
@@ -165,16 +163,42 @@ def release_sandbox():
     except Exception:
         pass
 
+# ---------- 产物收集（本地/云端共用的唯一实现） ----------
+def collect_outputs(out_dir):
+    """收集产物并切分入库片段：manifest + 主 md + chunks（含中文 bigram）。
+    本地与云端都走这一份——两模式差异仅在持久化目标（本地 SQLite vs Supabase）。"""
+    out = Path(out_dir)
+    manifest = []
+    main_md_rel = None
+    for f in sorted(p for p in out.rglob("*") if p.is_file()):
+        rel = f.relative_to(out).as_posix()
+        is_md = rel.lower().endswith(".md")
+        manifest.append({"rel": rel, "size": f.stat().st_size, "isMd": is_md})
+        if is_md and main_md_rel is None:
+            main_md_rel = rel
+    manifest.sort(key=lambda x: (not x["isMd"], x["rel"]))
+    if not main_md_rel:
+        raise RuntimeError("未找到任何 markdown 产物")
+    main_md_text = (out / main_md_rel).read_text(encoding="utf-8", errors="replace")
+    paras = chunk_md(main_md_text)
+    chunks = [{"seq": i, "content": p, "bigrams": to_bigrams(p)} for i, p in enumerate(paras)]
+    return {
+        "main_md": main_md_rel,
+        "main_md_text": main_md_text,
+        "manifest": manifest,
+        "chunks": chunks,
+        "para_count": len(paras),
+    }
+
 # ---------- 本地模式（纯本地模式：只做文件计算，不访问 Supabase） ----------
 def local_main(input_path, out_dir):
-    """本地模式：给定输入/输出路径，MinerU 提取后写产物清单 manifest.json。
+    """本地模式：给定输入/输出路径，MinerU 提取后产出 ingest.json（manifest + chunks）。
     日志走 stdout（由本地 server 收集写入任务日志）。"""
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     run_mineru(input_path, out, lambda m: print(m, flush=True))
-    files = sorted(p for p in out.rglob("*") if p.is_file() and p.name != "manifest.json")
-    manifest = [{"rel": p.relative_to(out).as_posix(), "size": p.stat().st_size} for p in files]
-    (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    ingest = collect_outputs(out)
+    (out / "ingest.json").write_text(json.dumps(ingest, ensure_ascii=False), encoding="utf-8")
     print("DONE", flush=True)
 
 # ---------- 主流程 ----------
@@ -211,44 +235,32 @@ def main():
         run_mineru(input_path, work / "out", lambda m: append_log(job, m))
         check_deadline()
 
-        # 3. 上传产物
+        # 3. 收集产物 + 上传（collect_outputs 与本地 --local 共用同一实现）
+        ingest = collect_outputs(work / "out")
         append_log(job, "上传产物到 Storage…")
-        files = sorted(p for p in (work / "out").rglob("*") if p.is_file())
-        saved = []
-        main_md_path = None
-        for f in files:
-            rel = f.relative_to(work / "out").as_posix()
-            ctype = "text/markdown; charset=utf-8" if f.suffix.lower() == ".md" else "application/octet-stream"
-            storage_put(f"outputs/{JOB_ID}/{rel}", f.read_bytes(), ctype)
-            is_md = rel.lower().endswith(".md")
-            saved.append({"rel": rel, "size": f.stat().st_size, "isMd": is_md})
-            if is_md and main_md_path is None:
-                main_md_path = rel
+        for m in ingest["manifest"]:
+            rel = m["rel"]
+            ctype = "text/markdown; charset=utf-8" if rel.lower().endswith(".md") else "application/octet-stream"
+            storage_put(f"outputs/{JOB_ID}/{rel}", (work / "out" / rel).read_bytes(), ctype)
             check_deadline()
-        saved.sort(key=lambda x: (not x["isMd"], x["rel"]))
-        if not main_md_path:
-            raise RuntimeError("未找到任何 markdown 产物")
 
         # 4. 入库（文档 + chunk + bigram）——先清旧记录再写入（重试复用同一 job id，幂等）
-        main_md = storage_get(f"outputs/{JOB_ID}/{main_md_path}").decode("utf-8", errors="replace")
-        check_deadline()
-        append_log(job, f"入库知识库（{len(chunk_md(main_md))} 个片段）…")
+        append_log(job, f"入库知识库（{ingest['para_count']} 个片段）…")
         sb_delete("chunks", "doc_id", JOB_ID)
         sb_delete("documents", "id", JOB_ID)
         sb_insert("documents", [{
             "id": JOB_ID, "job_id": JOB_ID, "filename": job["original_name"], "ext": job.get("ext") or "",
-            "size": job.get("size") or 0, "main_md": main_md,
+            "size": job.get("size") or 0, "main_md": ingest["main_md_text"],
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }])
-        paras = chunk_md(main_md)
-        for i, p in enumerate(paras):
-            sb_insert("chunks", [{"doc_id": JOB_ID, "seq": i, "content": p,
-                                  "content_bigrams": to_bigrams(p)}])
+        for c in ingest["chunks"]:
+            sb_insert("chunks", [{"doc_id": JOB_ID, "seq": c["seq"], "content": c["content"],
+                                  "content_bigrams": c["bigrams"]}])
 
         # 5. 完成
-        set_status(job, "done", files=saved, main_md_path=main_md_path, error=None,
+        set_status(job, "done", files=ingest["manifest"], main_md_path=ingest["main_md"], error=None,
                    quality={"level": "ok"})
-        append_log(job, f"完成：{len(saved)} 个产物，{len(paras)} 个检索片段")
+        append_log(job, f"完成：{len(ingest['manifest'])} 个产物，{ingest['para_count']} 个检索片段")
         print("DONE")
     except Exception as e:
         try:
