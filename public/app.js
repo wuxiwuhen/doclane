@@ -819,10 +819,14 @@
         const loads = families.map((f) => doc.fonts.load(`10px "${f}"`).catch(() => {}));
         await Promise.race([Promise.all(loads).then(() => doc.fonts.ready), new Promise((r) => setTimeout(r, 4000))]);
       }
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print(); // 同步阻塞，打印/取消后返回
-      iframe.remove();
-      flashToast('PDF 导出完成');
+      const cw = iframe.contentWindow;
+      cw.focus();
+      // print() 在现代浏览器是非阻塞的：无法感知"打印/取消"，只提示选择「另存为 PDF」，不再谎报成功
+      const cleanup = () => { if (iframe.isConnected) iframe.remove(); };
+      cw.addEventListener('afterprint', cleanup, { once: true });
+      flashToast('已打开打印对话框，请选择「另存为 PDF」保存');
+      cw.print();
+      setTimeout(cleanup, 60000); // 兜底：个别浏览器不触发 afterprint，避免离屏 iframe 常驻
     } catch (err) {
       flashToast('导出失败：' + (err.message || '网络错误'));
     } finally {
