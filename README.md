@@ -6,23 +6,23 @@
   <b>MinerU</b> × <b>Daytona</b> × <b>Supabase</b> × <b>Vercel</b>
 </p>
 
-PDF / Word / Excel / PPT / 图片 上传即解析：云端引擎完成版面还原与内容提取，自动入库知识库，支持中文全文检索与命中高亮直达原文。**云端多用户 + 本地单用户**两种模式共用同一套核心流水线。
+PDF / Word / Excel / PPT / 图片 上传即解析：云端引擎完成版面还原与内容提取，自动入库知识库，支持中文全文检索与命中高亮直达原文。云端多用户、本地单用户两种模式共用同一套核心流水线。
 
 ---
 
 ## 📑 目录
 
-- [界面预览](#-界面预览)
-- [特性](#-特性)
-- [双模式：云端 / 本地](#-双模式云端--本地)
-- [架构](#-架构)
-- [快速开始](#-快速开始)
-- [环境变量](#-环境变量)
-- [API 概览](#-api-概览)
-- [安全设计](#-安全设计)
-- [成本模型](#-成本模型)
-- [项目结构](#-项目结构)
-- [Roadmap](#-roadmap)
+- [界面预览](#界面预览)
+- [特性](#特性)
+- [双模式](#双模式)
+- [架构](#架构)
+- [快速开始](#快速开始)
+- [环境变量](#环境变量)
+- [API 概览](#api-概览)
+- [安全设计](#安全设计)
+- [成本模型](#成本模型)
+- [项目结构](#项目结构)
+- [Roadmap](#roadmap)
 
 ---
 
@@ -31,8 +31,6 @@ PDF / Word / Excel / PPT / 图片 上传即解析：云端引擎完成版面还�
 | 工作台（上传 · 解析 · 正文） | 知识库（检索 · 命中高亮） | 管理后台（用户 · 审计） |
 |---|---|---|
 | ![工作台](docs/screenshots/workspace.png) | ![知识库](docs/screenshots/knowledge.png) | ![管理后台](docs/screenshots/admin.png) |
-
-> 截图存放于 `docs/screenshots/`，命名与拍摄要点见 [docs/screenshots/README.md](docs/screenshots/README.md)。
 
 ---
 
@@ -49,7 +47,7 @@ PDF / Word / Excel / PPT / 图片 上传即解析：云端引擎完成版面还�
 
 ---
 
-## 🧭 双模式：云端 / 本地
+## 🧭 双模式
 
 同一个代码库、同一套 `routes/*` 路由、同一份 `drain.py` 流水线，通过数据门面 `api/_lib/store.js` 切换后端：
 
@@ -62,7 +60,7 @@ PDF / Word / Excel / PPT / 图片 上传即解析：云端引擎完成版面还�
 | 检索 | `pg_trgm` 关键词 | 本地 SQLite `LIKE` 关键词 |
 | 适用 | 上线给访客/面试官体验 | 个人使用、数据留在本机 |
 
-> 核心原则：**任务执行流水线只有一份（`runner/drain.py`）**，两模式差异仅在于「数据持久化目标」——详见 [docs/review-local-vs-cloud.md](docs/review-local-vs-cloud.md)。
+> 核心原则：**任务执行流水线只有一份（`runner/drain.py`）**，两模式差异仅在于「数据持久化目标」。
 
 ---
 
@@ -125,8 +123,6 @@ Dockerfile（安装 MinerU + 下载 2.5GB 模型） ──构建──▶ 快照
 
 1. Dashboard 新建项目（记录 Project URL / anon key / service_role key）
 2. 打开 **SQL Editor**，依次执行 `supabase/migrations/` 下的 `0001-0004`（建表 + RLS + 反馈表 + 用户视图）
-   - `0001` 现为「仅关键词检索」版（无 vector/embedding）
-   - 若你的库是旧 schema（含 `embedding` 列），执行 `0005_drop_embedding.sql` 降级
 
 **2. 配置 Daytona**
 
@@ -149,7 +145,7 @@ vercel env add RELEASE_SECRET production        # 任意随机串（release 回�
 git push origin main             # 触发自动部署
 ```
 
-完整环境变量见 [环境变量](#-环境变量)。
+完整环境变量见 [环境变量](#环境变量)。
 
 **4. 使用**
 
@@ -164,13 +160,12 @@ git push origin main             # 触发自动部署
 
 ```bash
 npm install
-# 复制 .env.example 为 .env，配置：
-DAYTONA_API_Key=dtn_xxxxxxxx
+cp .env.example .env   # 填入 DAYTONA_API_Key
 
-npm start                       # 即 node server-local.js，访问 http://127.0.0.1:3088
-# 端口冲突：PORT=8099 npm start
+npm start
 ```
 
+- 默认地址 `http://127.0.0.1:3088`（端口冲突可用 `PORT=8099 npm start` 覆盖）
 - 免登录（单用户即管理员），上传 → 解析 → 检索全链路在本地，数据存 `data/`
 - 首任务自动构建/复用 Daytona 快照，之后秒开
 - 云端与本地互不影响：路由层只认统一数据门面 `api/_lib/store.js`
@@ -194,8 +189,8 @@ npm start                       # 即 node server-local.js，访问 http://127.0
 | `AUTO_STOP_MINUTES` | `60` | 沙箱空闲停机（分钟） |
 | `MAX_ACTIVE_JOBS` | `5` | 每用户活跃任务上限 |
 | `MAX_JOBS_PER_HOUR` | `20` | 每用户每小时创建上限 |
-| `DATA_BACKEND` | `local` | 本地模式强制 `local`；云端不设（走 Supabase） |
-| `SNAPSHOT_NAME` / `SANDBOX_NAME` | 见 `ensure.js` | 快照/沙箱命名（可选） |
+| `DATA_BACKEND` | — | 数据后端：本地模式自动设为 `local`，云端不设（走 Supabase） |
+| `SNAPSHOT_NAME` / `SANDBOX_NAME` | 内置默认 | 快照 / 沙箱命名（可选，一般无需修改） |
 
 ---
 
@@ -258,14 +253,14 @@ npm start                       # 即 node server-local.js，访问 http://127.0
 | `api/_lib/store.js` | 数据后端门面（`DATA_BACKEND=local` 走 SQLite，否则走 Supabase） |
 | `api/_lib/store-local.js` | 本地 SQLite + PostgREST 查询子集模拟 |
 | `api/_lib/supabase.js` | Supabase REST 直连（service role，零依赖） |
-| `api/_lib/ensure.js` | 沙箱编排 + `releaseIfIdle` 共用（本地编排瘦身为适配器） |
+| `api/_lib/ensure.js` | 沙箱编排 + 用完即毁释放（本地/云端共用） |
 | `api/_lib/auth.js` / `jobs.js` / `text.js` | 认证 / 任务行映射 / 检索高亮 |
 | `runner/drain.py` | **唯一流水线**：提取 → collect_outputs（切段/bigram）→ 持久化 |
 | `routes/*` | API 业务路由（两模式共用，零分支） |
 | `lib/daytona.js` | Daytona Cloud REST 客户端（快照 / 沙箱 / toolbox） |
 | `public/` | 静态前端（vanilla JS + KaTeX + marked，零框架） |
 | `supabase/migrations/` | 数据库迁移（表结构 + RLS + 反馈 + 用户视图） |
-| `docs/` | 架构 / 迁移 / review 文档 + 截图 |
+| `docs/` | 架构 / 迁移文档 + 界面截图 |
 
 ---
 
@@ -290,4 +285,4 @@ npm start                       # 即 node server-local.js，访问 http://127.0
 
 ---
 
-*Powered by MinerU × Daytona × Supabase × Vercel · 设计文档见 [docs/architecture.md](docs/architecture.md) · 模式收敛说明见 [docs/review-local-vs-cloud.md](docs/review-local-vs-cloud.md)*
+*Powered by MinerU × Daytona × Supabase × Vercel · 架构设计见 [docs/architecture.md](docs/architecture.md)*
