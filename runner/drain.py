@@ -216,10 +216,13 @@ def main():
     if not JOB_ID or not SUPABASE_URL or not SERVICE_KEY:
         print("usage: python3 drain.py <job_id>  (需要 SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 环境变量)")
         sys.exit(2)
-    job = load_job()
-    append_log(job, "任务执行器已启动")
-    set_status(job, "preparing")
+    # load_job 也纳入 try：连任务都读不到时（Supabase 不可达/任务不存在），
+    # 也要打印可诊断的错误并走 finally 释放沙箱，而不是静默退出让任务永远卡 preparing。
+    job = None
     try:
+        job = load_job()
+        append_log(job, "任务执行器已启动")
+        set_status(job, "preparing")
         work = Path("/tmp/doclane-work") / JOB_ID   # 每任务独立工作目录（并发/重试隔离）
         (work / "out").mkdir(parents=True, exist_ok=True)
         input_path = work / ("input" + (job.get("ext") or ".bin"))
@@ -264,8 +267,11 @@ def main():
         print("DONE")
     except Exception as e:
         try:
-            append_log(job, f"失败：{str(e)[:500]}")
-            set_status(job, "error", error=str(e)[:1000])
+            if job is not None:
+                append_log(job, f"失败：{str(e)[:500]}")
+                set_status(job, "error", error=str(e)[:1000])
+            else:
+                print("ERROR: 无法加载任务：", e, file=sys.stderr, flush=True)
         except Exception:
             pass
         print("ERROR:", e, file=sys.stderr)

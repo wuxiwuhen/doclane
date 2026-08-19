@@ -137,7 +137,10 @@ export async function startDrain(jobId, userId) {
   // 后台启动用「子 shell」写法 `( setsid nohup … & )`，规避 process/execute 30s 硬上限
   const W = '/tmp/doclane-' + jobId;
   await tb.uploadFile(W + '/drain.py', Buffer.from(drainSource), 'drain.py');
-  const script = `${env} mkdir -p ${W} && ( setsid nohup python3 ${W}/drain.py ${jobId} >${W}/run.log 2>&1 < /dev/null & ) ; echo STARTED`;
+  // 注意：env 必须放在子 shell 内、setsid 之前——若放在 `mkdir` 之前，变量只会作用于
+  // mkdir（bash 临时赋值仅对首个命令生效），drain.py 拿不到 SUPABASE_* 会静默退出，
+  // 导致任务永远卡在 preparing 且无任何日志。
+  const script = `mkdir -p ${W} && ( ${env} setsid nohup python3 ${W}/drain.py ${jobId} >${W}/run.log 2>&1 < /dev/null & ) ; echo STARTED`;
   const r = await tb.exec(script, {}, 20);
   if (!/STARTED/.test(r.result || '')) {
     throw new Error('无法启动 drain.py：' + (r.result || '').slice(0, 200));
