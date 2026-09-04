@@ -100,6 +100,11 @@ export async function ensureSandbox(userId) {
       if (FAILED.includes(st)) {
         return { ok: false, error: `快照构建失败（${st}），请删除后重试或检查 Daytona 构建日志` };
       }
+      // 快照因闲置被 Daytona 停用（inactive）：先激活再继续，否则会永远卡在 building
+      if (st === 'inactive') {
+        await c.activateSnapshot(hit.id);
+        return { ok: true, building: true, message: '快照激活中（约 1-3 分钟），激活完成后自动继续' };
+      }
       if (!READY.includes(st)) {
         return { ok: true, building: true, message: `快照构建中（state=${st}，首次约 5-20 分钟），构建完成后自动继续` };
       }
